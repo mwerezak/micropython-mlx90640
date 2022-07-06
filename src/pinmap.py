@@ -1,5 +1,4 @@
 from machine import Pin, UART, I2C
-from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY
 
 PIN_LED = Pin(25, Pin.OUT)
 
@@ -16,5 +15,3 @@ PIN_I2C_SCL = Pin(11, Pin.IN, Pin.PULL_UP)
 I2C_CAMERA = I2C(
     id=1, scl=PIN_I2C_SCL, sda=PIN_I2C_SDA
 )
-
-DISPLAY = PicoGraphics(display=DISPLAY_PICO_DISPLAY)
