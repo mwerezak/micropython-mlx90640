@@ -53,7 +53,10 @@ class MLX90640:
         res_exp = self.calib.res_ee - self.registers['adc_resolution']
         return 2**res_exp
 
-    def read_ta(self):
+    def read_ta(self, ta0 = 25.0):
+        return self._delta_ta() + ta0
+
+    def _delta_ta(self):
         # ambient temperature calculation (degC)
         # type: (self) -> float
         v_ptat = self.registers['ta_ptat']
@@ -66,7 +69,7 @@ class MLX90640:
         # print('v_be:', v_be)
         # print('v_ptat_art: ', v_ptat_art)
 
-        return v_ta/self.calib.kt_ptat + 25.0
+        return v_ta/self.calib.kt_ptat
 
     def read_gain(self):
         # gain calculation
@@ -74,4 +77,10 @@ class MLX90640:
         return self.calib.gain / self.registers['gain']
 
     def read_image(self):
-        return ImageData(self)
+        return ImageData(
+            self.iface, 
+            self.calib,
+            self.read_gain(),
+            self._delta_ta(),
+            self._delta_vdd(),
+        )

@@ -59,7 +59,7 @@ class Array2D:
         self._array[i * self.stride + j] = value
 
     @classmethod
-    def iter_indices(cls, num_strides, stride):
+    def index_range(cls, num_strides, stride):
         # yields i,j pairs for an Array2D with the given shape
         # useful for generating the init sequence
         for i in range(num_strides):
@@ -70,6 +70,13 @@ class Array2D:
         return len(self._array)
     def __iter__(self):
         return iter(self._array)
+
+    def iter_indexed(self):
+        num_strides = (len(self._array) + self.stride - 1)//self.stride
+        indices = self.index_range(num_strides, self.stride)
+        for pair, value in zip(indices, self._array):
+            yield pair[0], pair[1], value
+
 
 class PixelCalibrationData:
     def __init__(self, iface):
@@ -111,12 +118,13 @@ class CameraCalibration:
         # IR data compensation
         self.pix_kta = Array2D('f', NUM_COLS, self._calc_pix_kta(eeprom))
 
+        kv_scale = 1 << eeprom['kv_scale']
         self.kv_avg = (
             # index by [row % 2][col % 2]
-            (eeprom['kv_avg_re_ce'], eeprom['kv_avg_re_co']),
-            (eeprom['kv_avg_ro_ce'], eeprom['kv_avg_ro_co']),
+            (eeprom['kv_avg_re_ce']/kv_scale, eeprom['kv_avg_re_co']/kv_scale),
+            (eeprom['kv_avg_ro_ce']/kv_scale, eeprom['kv_avg_ro_co']/kv_scale),
         )
-        self.kv_scale = 1 << eeprom['kv_scale']
+        
 
     def _calc_pix_os_ref(self, eeprom):
         offset_avg = eeprom['pix_os_average']
@@ -127,7 +135,7 @@ class CameraCalibration:
         occ_rows = tuple(_read_cc_iter(eeprom.iface, OCC_ROWS_ADDRESS, NUM_ROWS))
         occ_cols = tuple(_read_cc_iter(eeprom.iface, OCC_COLS_ADDRESS, NUM_COLS))
 
-        for row, col in Array2D.iter_indices(NUM_ROWS, NUM_COLS):
+        for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
             yield (
                 offset_avg
                 + occ_rows[row] * occ_scale_row
@@ -147,7 +155,7 @@ class CameraCalibration:
         print('kta_scale_1:', kta_scale_1)
         print('kta_scale_2:', kta_scale_2)
 
-        for row, col in Array2D.iter_indices(NUM_ROWS, NUM_COLS):
+        for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
             kta_ee = self.pix_data[row, col]['kta']
             kta_rc = kta_avg[row % 2][col % 2]
             yield (kta_rc + kta_ee * kta_scale_2)/kta_scale_1

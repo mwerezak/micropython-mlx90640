@@ -16,9 +16,15 @@ PIX_SIZE = struct.calcsize(PIX_STRUCT_FMT)
 
 
 class ImageData:
-    def __init__(self, camera):
-        self.camera = camera
-        self._raw_pix = Array2D('h', NUM_COLS, self._read_raw_pix(camera.iface))
+    def __init__(self, iface, calib, gain, delta_ta, delta_vdd):
+        self.calib = calib
+        self.gain = gain
+        self.delta_ta = delta_ta
+        self.delta_vdd = delta_vdd
+
+        pix_data = self._read_raw_pix(iface)
+        pix_data = self._calc_pix_offsets(pix_data)
+        self._pix = Array2D('f', NUM_COLS, pix_data)
 
     @staticmethod
     def _read_raw_pix(iface):
@@ -27,19 +33,10 @@ class ImageData:
             iface.read_into(PIX_DATA_ADDRESS + offset, buf)
             yield from struct.unpack(PIX_STRUCT_FMT, buf)
 
-    def _calc_pix_os(self):
-        # index by [row % 2][col % 2]
-        kta_avg = (
-            (eeprom['kta_avg_re_ce'], eeprom['kta_avg_re_co']),
-            (eeprom['kta_avg_ro_ce'], eeprom['kta_avg_ro_co']),
-        )
-
-        kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
-        kta_scale_2 = 1 << eeprom['kta_scale_2']
-        print('kta_scale_1:', kta_scale_1)
-        print('kta_scale_2:', kta_scale_2)
-
-        for row, col in Array2D.iter_indices(NUM_ROWS, NUM_COLS):
-            kta_ee = self.pix_data[row, col]['kta']
-            kta_rc = kta_avg[row % 2][col % 2]
-            yield (kta_rc + kta_ee * kta_scale_2)/kta_scale_1
+    def _calc_pix_offsets(self, raw_pix):
+        for value, idx in zip(raw_pix, Array2D.index_range(NUM_ROWS, NUM_COLS)):
+            row, col = idx
+            kta = self.calib.pix_kta[row, col]
+            kv = self.calib.kv_avg[row % 2][col % 2]
+            os_ref = self.calib.pix_os_ref[row, col]
+            yield value*self.gain - os_ref*(1 + kta*self.delta_ta)*(1 + kv*self.delta_vdd)
