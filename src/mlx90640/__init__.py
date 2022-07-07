@@ -4,6 +4,7 @@ from mlx90640.regmap import (
     CameraInterface, 
     RegisterMap,
 )
+from mlx90640.image import Calibration
 
 class CameraDetectError(Exception): pass
 
@@ -28,37 +29,12 @@ class RefreshRate:
     R64HZ  = const(0x7)
 
 
-class Calibration:
-    def load(self, eeprom):
-        # restore VDD sensor parameters
-        self.k_vdd = eeprom['k_vdd'] * 32
-        self.vdd_25 = (eeprom['vdd_25'] - 256) * 32 - 8192
-
-        # resolution control
-        self.res_ee = eeprom['res_ctrl_cal']
-
-        self.kv_ptat = eeprom['kv_ptat'] / 4096.0
-        self.kt_ptat = eeprom['kt_ptat'] / 8.0
-
-        self.ptat_25 = eeprom['ptat_25']
-        self.alpha_ptat = eeprom['k_ptat'] / 4.0 + 8
-        self.gain = eeprom['gain']
-
-        # restore Ta sensor parameters
-        # kv_ptat = _2s_complement( 6, eeprom['kv_ptat']) / (1 << 12)
-        # kt_ptat = _2s_complement(10, eeprom['kt_ptat']) / (1 <<  3)
-        # v_ptat_25 = eeprom['ptat_25']
-        # delta_v = (ram['vdd_pix'] - self.vdd_25)/
-
-
 class MLX90640:
     def __init__(self, i2c, addr):
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)
         self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
-
-        self.calib = Calibration()
-        self.calib.load(self.eeprom)
+        self.calib = Calibration(self.eeprom)
 
     def read_vdd(self, vdd0 = 3.3):
         # supply voltage calculation

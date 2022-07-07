@@ -14,7 +14,7 @@ from uctypes import (
 )
 
 
-def _2s_complement(bits, value):
+def twos_complement(bits, value):
     if value < 0:
         return value + (1 << bits)
     if value >= (1 << (bits - 1)):
@@ -162,35 +162,35 @@ EEPROM_MAP = {
     ),
 }
 
-OCC_ROWS = (0x2412, 24)
-OCC_COLS = (0x2418, 32)
+class StructProto:
+    # data needed to create a Struct
+    # can be instantiated once and reused between Struct instances
+    def __init__(self, fields):
+        self.layout = {}
+        self.signed = {}
+        for fld in fields:
+            self.layout[fld.name] = fld.layout
+            if fld.signed_bits is not None:
+                self.signed[fld.name] = fld.signed_bits
 
-ACC_ROWS = (0x2422, 24)
-ACC_COLS = (0x2428, 32)
-
-# used for both OCC and ACC
-CC_LAYOUT = (
-    field_desc('0', 4,  0, signed=True),
-    field_desc('1', 4,  4, signed=True),
-    field_desc('2', 4,  8, signed=True),
-    field_desc('3', 4, 12, signed=True),
-)
-
-PIX_CALIB_LAYOUT = (
-    field_desc('offset',  6, 10, signed=True),
-    field_desc('alpha',   6,  4),
-    field_desc('kta',     3,  1, signed=True),
-    field_desc('outlier', 1,  0),
-)
-
-class _Struct:
-    def __init__(self, buf, layout):
+class Struct:
+    def __init__(self, buf, proto):
+        self._signed = proto.signed
         self._struct = uctypes.struct(
-            uctypes.addressof(buf), layout, BIG_ENDIAN
+            uctypes.addressof(buf), proto.layout, BIG_ENDIAN
         )
+
     def __getitem__(self, name):
-        return getattr(self._struct, name)
+        value = getattr(self._struct, name)
+        signed = self._signed.get(name)
+        if signed is not None:
+            return twos_complement(signed, value)
+        return value
+
     def __setitem__(self, name, value):
+        signed = self._signed.get(name)
+        if signed is not None:
+            value = twos_complement(signed, value)
         setattr(self._struct, name, value)
 
 
@@ -224,12 +224,11 @@ class RegisterMap:
             if isinstance(fields, FieldDesc):
                 fields = (fields,)
 
-            struct = {}
+            proto = StructProto(fields)
             for fld in fields:
                 if fld.name in lookup:
                     raise ValueError(f"duplicate field name: {fld.name}")
-                struct[fld.name] = fld.layout
-                lookup[fld.name] = (address, struct, fld.signed_bits)
+                lookup[fld.name] = (address, proto)
 
         return lookup
 
@@ -244,25 +243,43 @@ class RegisterMap:
         return name in self._name_lookup
 
     def __getitem__(self, name):
-        address, layout, signed = self._name_lookup[name]
+        address, proto = self._name_lookup[name]
 
         buf = self.iface.read(address)
-        struct = _Struct(buf, layout)
-
-        if signed is not None:
-            return _2s_complement(signed, struct[name])
+        struct = Struct(buf, proto)
         return struct[name]
 
     def __setitem__(self, name, value):
-        address, layout, signed = self._name_lookup[name]
+        address, proto = self._name_lookup[name]
 
         if self.readonly:
             raise ReadOnlyError(f"can't write to '{name}': not permitted")
-        if signed is not None:
-            value = _2s_complement(signed, value)
 
         buf = bytearray(struct.calcsize(REGISTER_RAW_FMT))
         self.iface.read_into(address, buf)
-        struct = _Struct(buf, layout)
+        struct = Struct(buf, proto)
         struct[name] = value
         self.iface.write(address, buf)
+
+
+OCC_ROWS_ADDRESS = const(0x2412)
+OCC_COLS_ADDRESS = const(0x2418)
+
+ACC_ROWS_ADDRESS = const(0x2422)
+ACC_COLS_ADDRESS = const(0x2428)
+
+NUM_ROWS = const(24)
+NUM_COLS = const(32)
+NUM_PIX = const(32 * 24)  # const(NUM_COLS * NUM_ROWS)
+
+PIX_CALIB_PROTO = StructProto((
+    field_desc('offset',  6, 10, signed=True),
+    field_desc('alpha',   6,  4),
+    field_desc('kta',     3,  1, signed=True),
+    field_desc('outlier', 1,  0),
+))
+
+PIX_CALIB_ADDRESS = const(0x2440)
+
+def pix_calib_address(row, col):
+    return PIX_CALIB_ADDRESS + row * NUM_COLS + col
