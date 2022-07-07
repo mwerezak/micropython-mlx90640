@@ -28,17 +28,21 @@ class RefreshRate:
     R64HZ  = const(0x7)
 
 
-def _2s_complement(bits, value):
-    if value >= (1 << (bits - 1)):
-        return value - (1 << bits)
-    return value
-
-
 class Calibration:
     def load(self, eeprom):
         # restore VDD sensor parameters
-        self.k_vdd = eeprom['k_vdd'] * (1 << 5)
-        self.vdd_25 = (eeprom['vdd_25'] - 256) * (1 << 5) - (1 << 13)
+        self.k_vdd = eeprom['k_vdd'] * 32
+        self.vdd_25 = (eeprom['vdd_25'] - 256) * 32 - 8192
+
+        # resolution control
+        self.res_ee = eeprom['res_ctrl_cal']
+
+        self.kv_ptat = eeprom['kv_ptat'] / 4096.0
+        self.kt_ptat = eeprom['kt_ptat'] / 8.0
+
+        self.ptat_25 = eeprom['ptat_25']
+        self.alpha_ptat = eeprom['k_ptat'] / 4.0 + 8
+        self.gain = eeprom['gain']
 
         # restore Ta sensor parameters
         # kv_ptat = _2s_complement( 6, eeprom['kv_ptat']) / (1 << 12)
@@ -47,20 +51,46 @@ class Calibration:
         # delta_v = (ram['vdd_pix'] - self.vdd_25)/
 
 
-
-
 class MLX90640:
     def __init__(self, i2c, addr):
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)
-        self.eeprom = RegisterMap(self.iface, EEPROM_MAP)
+        self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
 
-        self.calibration = Calibration()
-        self.calibration.load(self.eeprom)
+        self.calib = Calibration()
+        self.calib.load(self.eeprom)
 
-    def read_vdd(self):
+    def read_vdd(self, vdd0 = 3.3):
         # supply voltage calculation
-        pass
+        # type: (self) -> float
+        return self._delta_vdd() + vdd0
+
+    def _delta_vdd(self):
+        vdd_pix = self.registers['vdd_pix'] * self._adc_res_corr()
+        return float(vdd_pix - self.calib.vdd_25)/self.calib.k_vdd
 
     def _adc_res_corr(self):
-        pass
+        # type: (self) -> float
+        res_exp = self.calib.res_ee - self.registers['adc_resolution']
+        return 2**res_exp
+
+    def read_ta(self):
+        # ambient temperature calculation (degC)
+        # type: (self) -> float
+        v_ptat = self.registers['ta_ptat']
+        v_be = self.registers['ta_vbe']
+        v_ptat_art = v_ptat/( v_ptat*self.calib.alpha_ptat + v_be ) * (1 << 18)
+
+        v_ta = v_ptat_art/(1.0 + self.calib.kv_ptat*self._delta_vdd() - self.calib.ptat_25)
+
+        # print('v_ptat: ', v_ptat)
+        # print('v_be:', v_be)
+        # print('v_ptat_art: ', v_ptat_art)
+
+        return v_ta/self.calib.kt_ptat + 25.0
+
+    def read_gain(self):
+        # gain calculation
+        # type: (self) -> float
+        return self.calib.gain / self.registers['gain']
+

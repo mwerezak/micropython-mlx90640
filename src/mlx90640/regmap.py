@@ -15,6 +15,8 @@ from uctypes import (
 
 
 def _2s_complement(bits, value):
+    if value < 0:
+        return value + (1 << bits)
     if value >= (1 << (bits - 1)):
         return value - (1 << bits)
     return value
@@ -25,7 +27,7 @@ REGISTER_RAW_FMT = const('>H')  # I2C registers are 16-bit big-endian
 FD_BYTE = object()
 FD_WORD = object()
 
-FieldDesc = namedtuple('FieldDesc', ('name', 'layout', 'use_2s_compl'))
+FieldDesc = namedtuple('FieldDesc', ('name', 'layout', 'signed_bits'))
 def field_desc(name, bits, pos=0, signed=False):
     if bits is FD_WORD:
         layout = 0 | (INT16 if signed else UINT16)
@@ -100,8 +102,8 @@ EEPROM_MAP = {
         field_desc('kt_ptat', 10,  0, signed=True),
     ),
     0x2433 : (
-        field_desc('kv_vdd', FD_BYTE, 1, signed=True),
-        field_desc('vdd_25', FD_BYTE, 0, signed=True),
+        field_desc('k_vdd', FD_BYTE, 1, signed=True),
+        field_desc('vdd_25', FD_BYTE, 0),
     ),
     0x2434 : (
         field_desc('kv_avg_ro_co', 4, 12, signed=True),
@@ -123,13 +125,13 @@ EEPROM_MAP = {
         field_desc('kta_avg_re_ce', FD_BYTE, 0, signed=True),
     ),
     0x2438 : (
-        field_desc('res_ctrl_cal', 4, 12),
+        field_desc('res_ctrl_cal', 2, 12),
         field_desc('kv_scale',     4,  8),
         field_desc('kta_scale_1',  4,  4),
         field_desc('kta_scale_2',  4,  0),
     ),
     0x2439 : (
-        field_desc('cp_sp_ratio',    6  10),
+        field_desc('cp_sp_ratio',    6, 10),
         field_desc('alpha_cp_sp_0', 10,  0),
     ),
     0x243A : (
@@ -175,8 +177,8 @@ CC_LAYOUT = (
 )
 
 PIX_CALIB_LAYOUT = (
-    field_desc('offset'   6, 10, signed=True),
-    field_desc('alpha'    6,  4),
+    field_desc('offset',  6, 10, signed=True),
+    field_desc('alpha',   6,  4),
     field_desc('kta',     3,  1, signed=True),
     field_desc('outlier', 1,  0),
 )
@@ -206,16 +208,30 @@ class CameraInterface:
     def write(self, mem_addr, buf):
         self.i2c.writeto_mem(self.addr, mem_addr, buf, addrsize=16)
 
+class ReadOnlyError(Exception): pass
 
 class RegisterMap:
-    def __init__(self, iface, register_map):
-        # register_map should be a dict of { I2C address : uctype layout }
+    def __init__(self, iface, register_map, readonly=False):
+        # register_map should be a dict of { I2C address : FieldDesc(s) }
         self.iface = iface
-        self._name_lookup = {
-            name : (address, layout)
-            for address, layout in register_map.items()
-            for name in layout.keys()
-        }
+        self.readonly = readonly
+        self._name_lookup = self._build_lookup(register_map)
+
+    @staticmethod
+    def _build_lookup(register_map):
+        lookup = {}
+        for address, fields in register_map.items():
+            if isinstance(fields, FieldDesc):
+                fields = (fields,)
+
+            struct = {}
+            for fld in fields:
+                if fld.name in lookup:
+                    raise ValueError(f"duplicate field name: {fld.name}")
+                struct[fld.name] = fld.layout
+                lookup[fld.name] = (address, struct, fld.signed_bits)
+
+        return lookup
 
     def keys(self):
         return self._name_lookup.keys()
@@ -228,14 +244,22 @@ class RegisterMap:
         return name in self._name_lookup
 
     def __getitem__(self, name):
-        address, layout = self._name_lookup[name]
+        address, layout, signed = self._name_lookup[name]
 
         buf = self.iface.read(address)
         struct = _Struct(buf, layout)
+
+        if signed is not None:
+            return _2s_complement(signed, struct[name])
         return struct[name]
 
     def __setitem__(self, name, value):
-        address, layout = self._name_lookup[name]
+        address, layout, signed = self._name_lookup[name]
+
+        if self.readonly:
+            raise ReadOnlyError(f"can't write to '{name}': not permitted")
+        if signed is not None:
+            value = _2s_complement(signed, value)
 
         buf = bytearray(struct.calcsize(REGISTER_RAW_FMT))
         self.iface.read_into(address, buf)
