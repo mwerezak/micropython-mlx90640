@@ -1,4 +1,3 @@
-import struct
 from ucollections import namedtuple
 
 import uctypes
@@ -14,16 +13,14 @@ from uctypes import (
 )
 
 
+REG_SIZE = const(2)
+
 def twos_complement(bits, value):
     if value < 0:
         return value + (1 << bits)
     if value >= (1 << (bits - 1)):
         return value - (1 << bits)
     return value
-
-
-REG_RAW_FMT = const('>H')  # I2C registers are 16-bit big-endian
-REG_SIZE = struct.calcsize(REG_RAW_FMT)
 
 FD_BYTE = object()
 FD_WORD = object()

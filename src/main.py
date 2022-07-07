@@ -9,3 +9,4 @@ from pinmap import I2C_CAMERA
 from mlx90640 import detect_camera
 
 camera = detect_camera(I2C_CAMERA)
+im = camera.read_image()

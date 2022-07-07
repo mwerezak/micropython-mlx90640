@@ -4,7 +4,10 @@ from mlx90640.regmap import (
     CameraInterface, 
     RegisterMap,
 )
-from mlx90640.image import CameraCalibration
+from mlx90640.calibration import (
+    CameraCalibration,
+)
+from mlx90640.image import ImageData
 
 class CameraDetectError(Exception): pass
 
@@ -34,7 +37,7 @@ class MLX90640:
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)
         self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
-        self.calib = CameraCalibration(self.eeprom)
+        self.calib = CameraCalibration(self.iface, self.eeprom)
 
     def read_vdd(self, vdd0 = 3.3):
         # supply voltage calculation
@@ -70,3 +73,5 @@ class MLX90640:
         # type: (self) -> float
         return self.calib.gain / self.registers['gain']
 
+    def read_image(self):
+        return ImageData(self)
