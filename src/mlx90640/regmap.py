@@ -22,7 +22,8 @@ def twos_complement(bits, value):
     return value
 
 
-REGISTER_RAW_FMT = const('>H')  # I2C registers are 16-bit big-endian
+REG_RAW_FMT = const('>H')  # I2C registers are 16-bit big-endian
+REG_SIZE = struct.calcsize(REG_RAW_FMT)
 
 FD_BYTE = object()
 FD_WORD = object()
@@ -255,31 +256,10 @@ class RegisterMap:
         if self.readonly:
             raise ReadOnlyError(f"can't write to '{name}': not permitted")
 
-        buf = bytearray(struct.calcsize(REGISTER_RAW_FMT))
+        buf = bytearray(REG_SIZE)
         self.iface.read_into(address, buf)
         struct = Struct(buf, proto)
         struct[name] = value
         self.iface.write(address, buf)
 
 
-OCC_ROWS_ADDRESS = const(0x2412)
-OCC_COLS_ADDRESS = const(0x2418)
-
-ACC_ROWS_ADDRESS = const(0x2422)
-ACC_COLS_ADDRESS = const(0x2428)
-
-NUM_ROWS = const(24)
-NUM_COLS = const(32)
-NUM_PIX = const(32 * 24)  # const(NUM_COLS * NUM_ROWS)
-
-PIX_CALIB_PROTO = StructProto((
-    field_desc('offset',  6, 10, signed=True),
-    field_desc('alpha',   6,  4),
-    field_desc('kta',     3,  1, signed=True),
-    field_desc('outlier', 1,  0),
-))
-
-PIX_CALIB_ADDRESS = const(0x2440)
-
-def pix_calib_address(row, col):
-    return PIX_CALIB_ADDRESS + row * NUM_COLS + col

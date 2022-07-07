@@ -2,27 +2,59 @@ import struct
 from array import array
 from mlx90640.regmap import (
     Struct, 
-    pix_calib_address,
+    StructProto,
+    field_desc,
+    REG_SIZE,
+    REG_RAW_FMT,
     twos_complement,
 )
 
-from mlx90640.regmap import (
-    NUM_ROWS,
-    NUM_COLS,
-    NUM_PIX,
-    OCC_ROWS_ADDRESS,
-    OCC_COLS_ADDRESS,
-    ACC_ROWS_ADDRESS,
-    ACC_COLS_ADDRESS,
-    PIX_CALIB_ADDRESS,
-    PIX_CALIB_PROTO,
-    REGISTER_RAW_FMT,
-)
+OCC_ROWS_ADDRESS = const(0x2412)
+OCC_COLS_ADDRESS = const(0x2418)
 
-def _pix_idx(row, col):
-    return row * NUM_COLS + col
+ACC_ROWS_ADDRESS = const(0x2422)
+ACC_COLS_ADDRESS = const(0x2428)
 
-class Calibration:
+NUM_ROWS = const(24)
+NUM_COLS = const(32)
+NUM_PIX = const(32 * 24)  # const(NUM_COLS * NUM_ROWS)
+
+PIX_CALIB_PROTO = StructProto((
+    field_desc('offset',  6, 10, signed=True),
+    field_desc('alpha',   6,  4),
+    field_desc('kta',     3,  1, signed=True),
+    field_desc('outlier', 1,  0),
+))
+
+PIX_CALIB_ADDRESS = const(0x2440)
+
+
+class Array2D:
+    def __init__(self, typecode, stride, init):
+        self.stride = stride
+        self._array = array(typecode, init)
+    def __getitem__(self, idx):
+        i, j = idx
+        return self._array[i * self.stride + j]
+    def __setitem__(self, idx, value):
+        i, j = idx
+        self._array[i * self.stride + j] = value
+
+class PixelCalibrationData:
+    def __init__(self, eeprom):
+        self._data = bytearray(NUM_PIX * REG_SIZE)
+        for idx in range(NUM_PIX):
+            offset = idx * REG_SIZE
+            self._data[offset:offset+REG_SIZE] = eeprom.iface.read(PIX_CALIB_ADDRESS + offset)
+
+    def __getitem__(self, pixel):
+        # type: (row, col) -> Struct
+        row, col = pixel
+        idx = row * NUM_COLS + col
+        offset = idx * REG_SIZE
+        return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
+
+class CameraCalibration:
     def __init__(self, eeprom):
         # restore VDD sensor parameters
         self.k_vdd = eeprom['k_vdd'] * 32
@@ -41,25 +73,10 @@ class Calibration:
         self.gain = eeprom['gain']
 
         # pixel calibration data
-        self.pix_data_raw = tuple(
-            eeprom.iface.read(PIX_CALIB_ADDRESS + offset)
-            for offset in range(NUM_PIX)
-        )
-        self.pix_offsets = array('h', self._calc_pix_offsets(eeprom))
+        self.pix_data = PixelCalibrationData(eeprom)
+        self.pix_os_ref = Array2D('h', NUM_COLS, self._calc_pix_os_ref(eeprom))
 
-    @staticmethod
-    def _read_cc_iter(iface, base, size):
-        buf = bytearray(2)
-        for addr_off in range(size // 4):
-            cc_addr = base + addr_off
-            iface.read_into(cc_addr, buf)
-            raw_value = struct.unpack(REGISTER_RAW_FMT, buf)[0]
-            for i in range(4):
-                bitpos = 4 * i
-                cc = (raw_value & (0xF << bitpos)) >> bitpos
-                yield twos_complement(4, cc)
-
-    def _calc_pix_offsets(self, eeprom):
+    def _calc_pix_os_ref(self, eeprom):
         offset_avg = eeprom['pix_os_average']
         occ_scale_row = (1 << eeprom['scale_occ_row'])
         occ_scale_col = (1 << eeprom['scale_occ_col'])
@@ -70,21 +87,21 @@ class Calibration:
 
         for row in range(NUM_ROWS):
             for col in range(NUM_COLS):
-                idx = _pix_idx(row, col)
-                pix_data = Struct(self.pix_data_raw[idx], PIX_CALIB_PROTO)
-
                 yield (
                     offset_avg
                     + occ_rows[row] * occ_scale_row
                     + occ_cols[col] * occ_scale_col
-                    + pix_data['offset'] * occ_scale_rem
+                    + self.pix_data[row, col]['offset'] * occ_scale_rem
                 )
 
-class ImageData:
-    def __init__(self, iface, calib):
-        self.iface = iface
-
-
-
-
-
+    @staticmethod
+    def _read_cc_iter(iface, base, size):
+        buf = bytearray(2)
+        for addr_off in range(size // 4):
+            cc_addr = base + addr_off
+            iface.read_into(cc_addr, buf)
+            raw_value = struct.unpack(REG_RAW_FMT, buf)[0]
+            for i in range(4):
+                bitpos = 4 * i
+                cc = (raw_value & (0xF << bitpos)) >> bitpos
+                yield twos_complement(4, cc)
