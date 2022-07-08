@@ -29,9 +29,12 @@ class ChessPattern:
     @classmethod
     def iter_sp(cls):
         return (
-            (idx//32 - (idx//64)*2) ^ (idx - (idx//2)*2)
-            for idx in range(NUM_ROWS * NUM_COLS)
+            cls.get_sp(idx) for idx in range(NUM_ROWS * NUM_COLS)
         )
+
+    @classmethod
+    def get_sp(cls, idx):
+        return (idx//32 - (idx//64)*2) ^ (idx - (idx//2)*2)
 
 class InterleavedPattern:
     pattern_id = 0x0
@@ -47,9 +50,12 @@ class InterleavedPattern:
     @classmethod
     def iter_sp(cls):
         return (
-            idx//32 - (idx//64)*2
-            for idx in range(NUM_ROWS * NUM_COLS)
+            cls.get_sp(idx) for idx in range(NUM_ROWS * NUM_COLS)
         )
+
+    @classmethod
+    def get_sp(cls, idx):
+        return idx//32 - (idx//64)*2
 
 _READ_PATTERNS = {
     pat.pattern_id : pat for pat in (ChessPattern, InterleavedPattern)
@@ -66,8 +72,6 @@ class Subpage:
 
     def iter_sp_pix(self):
         return self.pattern.iter_sp_pix(self.id)
-    def iter_sp(self):
-        return self.pattern.iter_sp()
 
 
 ## Image Buffers
@@ -98,6 +102,8 @@ class ProcessedImage:
 
     def update(self, pix_data, subpage, state):
         pix_os_cp = self._calc_os_cp(subpage, state)
+        # pix_os_cp = self._calc_os_cp2(subpage.pattern, state)
+
         for row, col, raw in pix_data:
             ## IR data compensation - offset, Vdd, and Ta
             kta = self.calib.pix_kta.get_coord(row, col)
@@ -106,11 +112,26 @@ class ProcessedImage:
             v_os = raw*state.gain - os_ref*(1 + kta*state.ta)*(1 + kv*state.vdd)
 
             ## IR data gradient compensation
-            v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp
-            self.pix.set_coord(row, col, v_ir)
+            idx = row*NUM_COLS + col
+            # v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp
+            #v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp[subpage.pattern.get_sp(idx)]
+            # self.pix[idx] = v_ir
+            self.pix[idx] = v_os/_EMISSIVITY
 
     def _calc_os_cp(self, subpage, state):
-        offset_cp = self.calib.offset_cp[subpage.id]
+        pix_os_cp = self.calib.pix_os_cp[subpage.id]
         if subpage.pattern is InterleavedPattern:
-            offset_cp += self.calib.il_chess_c1
-        return state.cp[subpage.id] - offset_cp*(1 + self.calib.kta_cp*state.ta)*(1 + self.calib.kv_cp*state.vdd)
+            pix_os_cp += self.calib.il_chess_c1
+        return state.gain_cp[subpage.id] - pix_os_cp*(1 + self.calib.kta_cp*state.ta)*(1 + self.calib.kv_cp*state.vdd)
+
+    def _calc_os_cp2(self, pattern, state):
+        pix_os_cp = list(self.calib.pix_os_cp)
+        if pattern is InterleavedPattern:
+            for i in range(len(pix_os_cp)):
+                pix_os_cp[i] += self.calib.il_chess_c1
+
+        k = (1 + self.calib.kta_cp*state.ta)*(1 + self.calib.kv_cp*state.vdd)
+        return [
+            gain_cp_sp - pix_os_cp_sp*k
+            for pix_os_cp_sp, gain_cp_sp in zip(pix_os_cp, state.gain_cp)
+        ]

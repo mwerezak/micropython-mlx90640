@@ -36,7 +36,7 @@ class RefreshRate:
         return value
 
 # container for momentary state needed for image compensation
-CameraState = namedtuple('CameraState', ('vdd', 'ta', 'gain', 'cp'))
+CameraState = namedtuple('CameraState', ('vdd', 'ta', 'gain', 'gain_cp'))
 
 class DataNotAvailableError(Exception): pass
 
@@ -109,7 +109,7 @@ class MLX90640:
             vdd = self.read_vdd(),
             ta = self.read_ta(),
             gain = gain,
-            cp = (cp_sp_0, cp_sp_1),
+            gain_cp = (cp_sp_0, cp_sp_1),
         )
 
     @property

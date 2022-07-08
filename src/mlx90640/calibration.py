@@ -101,7 +101,7 @@ class CameraCalibration:
         # IR gradient compensation
         offset_cp_sp_0 = eeprom['offset_cp_sp_0']
         offset_cp_sp_1 = offset_cp_sp_0 + eeprom['cp_offset_delta']
-        self.offset_cp = (offset_cp_sp_0, offset_cp_sp_1)
+        self.pix_os_cp = (offset_cp_sp_0, offset_cp_sp_1)
 
         self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
         self.kv_cp = eeprom['kv_cp'] / self.kv_scale
