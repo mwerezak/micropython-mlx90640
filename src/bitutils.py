@@ -68,62 +68,6 @@ class Struct:
             value = twos_complement(signed, value)
         setattr(self._struct, name, value)
 
-
-class ReadOnlyError(Exception): pass
-
-
-class RegisterMap:
-    def __init__(self, iface, register_map, readonly=False):
-        # register_map should be a dict of { I2C address : FieldDesc(s) }
-        self.iface = iface
-        self.readonly = readonly
-        self._name_lookup = self._build_lookup(register_map)
-
-    @staticmethod
-    def _build_lookup(register_map):
-        lookup = {}
-        for address, fields in register_map.items():
-            if isinstance(fields, FieldDesc):
-                fields = (fields,)
-
-            proto = StructProto(fields)
-            for fld in fields:
-                if fld.name in lookup:
-                    raise ValueError(f"duplicate field name: {fld.name}")
-                lookup[fld.name] = (address, proto)
-
-        return lookup
-
-    def keys(self):
-        return self._name_lookup.keys()
-
-    def __iter__(self):
-        return iter(self.keys())
-    def __len__(self):
-        return len(self._name_lookup)
-    def __contains__(self, name):
-        return name in self._name_lookup
-
-    def __getitem__(self, name):
-        address, proto = self._name_lookup[name]
-
-        buf = self.iface.read(address)
-        struct = Struct(buf, proto)
-        return struct[name]
-
-    def __setitem__(self, name, value):
-        address, proto = self._name_lookup[name]
-
-        if self.readonly:
-            raise ReadOnlyError(f"can't write to '{name}': not permitted")
-
-        buf = bytearray(REG_SIZE)
-        self.iface.read_into(address, buf)
-        struct = Struct(buf, proto)
-        struct[name] = value
-        self.iface.write(address, buf)
-
-
 class Array2D:
     def __init__(self, typecode, stride, init):
         self.stride = stride

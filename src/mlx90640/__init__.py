@@ -1,7 +1,12 @@
-from bitutils import RegisterMap
-from mlx90640.regmap import REGISTER_MAP, EEPROM_MAP, CameraInterface
-from mlx90640.calibration import CameraCalibration
-from mlx90640.image import ImageData
+import time
+from mlx90640.regmap import (
+    REGISTER_MAP,
+    EEPROM_MAP,
+    RegisterMap,
+    CameraInterface,
+)
+from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS
+from mlx90640.image import ImageData, read_raw_image
 
 class CameraDetectError(Exception): pass
 
@@ -25,13 +30,31 @@ class RefreshRate:
     R32HZ  = const(0x6)
     R64HZ  = const(0x7)
 
+    @classmethod
+    def get_freq(cls, value):
+        return 2.0**(value - 1)
+
+# wait 80ms + delay determined by the refresh rate
+def _power_on_delay(refresh_rate):
+    delay_ms = int(80 + 2*1000/refresh_rate) + 1
+    time.sleep_ms(delay_ms)
+
+class DataNotAvailableError(Exception): pass
 
 class MLX90640:
+    NUM_ROWS = NUM_ROWS
+    NUM_COLS = NUM_COLS
+
     def __init__(self, i2c, addr):
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)
         self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
+
+        _power_on_delay(self.read_refresh_rate())
         self.calib = CameraCalibration(self.iface, self.eeprom)
+
+    def read_refresh_rate(self):
+        return RefreshRate.get_freq(self.registers['refresh_rate'])
 
     def read_vdd(self, vdd0 = 3.3):
         # supply voltage calculation
@@ -70,9 +93,18 @@ class MLX90640:
         # type: (self) -> float
         return self.calib.gain / self.registers['gain']
 
+    def has_data(self):
+        return bool(self.registers['data_available'])
+
     def read_image(self):
+        if not self.has_data():
+            raise DataNotAvailableError
+
+        pix_data = tuple(read_raw_image(self.iface))
+        self.registers['data_available'] = 0
+
         return ImageData(
-            self.iface, 
+            pix_data,
             self.calib,
             self.read_gain(),
             self._delta_ta(),

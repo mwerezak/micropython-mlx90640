@@ -12,28 +12,25 @@ PIX_DATA_ADDRESS = const(0x0400)
 PIX_STRUCT_FMT = const('>h')
 PIX_SIZE = struct.calcsize(PIX_STRUCT_FMT)
 
+def read_raw_image(iface):
+    buf = bytearray(PIX_SIZE)
+    for offset in range(NUM_ROWS * NUM_COLS):
+        iface.read_into(PIX_DATA_ADDRESS + offset, buf)
+        yield from struct.unpack(PIX_STRUCT_FMT, buf)
 
 class ImageData:
-    def __init__(self, iface, calib, gain, delta_ta, delta_vdd):
+    def __init__(self, pix_data, calib, gain, delta_ta, delta_vdd):
         self.calib = calib
         self.gain = gain
         self.delta_ta = delta_ta
         self.delta_vdd = delta_vdd
 
-        pix_data = tuple(self._read_raw_pix(iface))
         pix_data = self._calc_pix_offsets(pix_data)
         self.pix = Array2D('f', NUM_COLS, pix_data)
 
     @property
     def pixbuf(self):
         return self.pix.array
-
-    @staticmethod
-    def _read_raw_pix(iface):
-        buf = bytearray(PIX_SIZE)
-        for offset in range(NUM_ROWS * NUM_COLS):
-            iface.read_into(PIX_DATA_ADDRESS + offset, buf)
-            yield from struct.unpack(PIX_STRUCT_FMT, buf)
 
     def _calc_pix_offsets(self, raw_pix):
         for value, idx in zip(raw_pix, Array2D.index_range(NUM_ROWS, NUM_COLS)):
