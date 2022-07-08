@@ -1,5 +1,6 @@
 import struct
 from array import array
+from ucollections import namedtuple
 from utils import (
     Struct,
     StructProto,
@@ -57,6 +58,18 @@ _READ_PATTERNS = {
 def get_pattern_by_id(pattern_id):
     return _READ_PATTERNS.get(pattern_id)
 
+
+class Subpage:
+    def __init__(self, pattern, sp_id):
+        self.pattern = pattern
+        self.id = sp_id
+
+    def iter_sp_pix(self):
+        return self.pattern.iter_sp_pix(self.id)
+    def iter_sp(self):
+        return self.pattern.iter_sp()
+
+
 ## Image Buffers
 
 class RawImage:
@@ -75,16 +88,29 @@ class RawImage:
         for row, col in iter_idx:
             yield row, col, self.pix.get_coord(row, col)
 
+_EMISSIVITY = const(1)
+
 class ProcessedImage:
     def __init__(self, calib):
         # pix_data should be a sequence of ints
         self.calib = calib
         self.pix = Array2D.filled('f', NUM_ROWS, NUM_COLS, 0)
 
-    def update(self, pix_data, state):
+    def update(self, pix_data, subpage, state):
+        pix_os_cp = self._calc_os_cp(subpage, state)
         for row, col, raw in pix_data:
+            ## IR data compensation - offset, Vdd, and Ta
             kta = self.calib.pix_kta.get_coord(row, col)
             kv = self.calib.kv_avg[row % 2][col % 2]
             os_ref = self.calib.pix_os_ref.get_coord(row, col)
-            value = raw*state.gain - os_ref*(1 + kta*state.ta)*(1 + kv*state.vdd)
-            self.pix.set_coord(row, col, value)
+            v_os = raw*state.gain - os_ref*(1 + kta*state.ta)*(1 + kv*state.vdd)
+
+            ## IR data gradient compensation
+            v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp
+            self.pix.set_coord(row, col, v_ir)
+
+    def _calc_os_cp(self, subpage, state):
+        offset_cp = self.calib.offset_cp[subpage.id]
+        if subpage.pattern is InterleavedPattern:
+            offset_cp += self.calib.il_chess_c1
+        return state.cp[subpage.id] - offset_cp*(1 + self.calib.kta_cp*state.ta)*(1 + self.calib.kv_cp*state.vdd)

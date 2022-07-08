@@ -1,3 +1,3 @@
 from camera import CameraLoop
-camera = CameraLoop()
-camera.run()
+main = CameraLoop()
+main.run()

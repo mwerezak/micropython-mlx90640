@@ -6,7 +6,7 @@ from mlx90640.regmap import (
     CameraInterface,
 )
 from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS
-from mlx90640.image import RawImage, ProcessedImage, get_pattern_by_id
+from mlx90640.image import RawImage, ProcessedImage, Subpage, get_pattern_by_id
 
 class CameraDetectError(Exception): pass
 
@@ -36,7 +36,7 @@ class RefreshRate:
         return value
 
 # container for momentary state needed for image compensation
-CameraState = namedtuple('CameraStat', ('vdd', 'ta', 'gain'))
+CameraState = namedtuple('CameraState', ('vdd', 'ta', 'gain', 'cp'))
 
 class DataNotAvailableError(Exception): pass
 
@@ -102,10 +102,14 @@ class MLX90640:
         return self.calib.gain / self.registers['gain']
 
     def read_state(self):
+        gain = self.read_gain()
+        cp_sp_0 = gain * self.registers['cp_sp_0']
+        cp_sp_1 = gain * self.registers['cp_sp_1']
         return CameraState(
             vdd = self.read_vdd(),
             ta = self.read_ta(),
-            gain = self.read_gain(),
+            gain = gain,
+            cp = (cp_sp_0, cp_sp_1),
         )
 
     @property
@@ -116,34 +120,30 @@ class MLX90640:
     def last_subpage(self):
         return self.registers['last_subpage']
 
-    def read_image(self, sp = None):
+    def read_image(self, sp_id = None):
         if not self.has_data:
             raise DataNotAvailableError
         
-        if sp is None:
-            sp = self.last_subpage
+        if sp_id is None:
+            sp_id = self.last_subpage
 
-        pat = self.get_pattern()
-        self.last_read = (pat, sp)
+        subpage = Subpage(self.get_pattern(), sp_id)
+        self.last_read = subpage
 
-        # print(f"read SP {sp}")
-        subpage = pat.iter_sp_pix(sp)
-        self.raw.read(self.iface, subpage)
+        # print(f"read SP {subpage.id}")
+        self.raw.read(self.iface, subpage.iter_sp_pix())
         self.registers['data_available'] = 0
         return self.raw
 
-    def process_image(self, sp = None):
+    def process_image(self, sp_id = None):
         if self.last_read is None:
             raise DataNotAvailableError
 
-        if sp is None:
-            pat, sp = self.last_read
-        else:
-            pat, _ = self.last_read
+        subpage = self.last_read
+        if sp_id is not None:
+            subpage.id = sp_id
 
-        subpage = pat.iter_sp_pix(sp)
-        update_pix = self.raw.iter_subpage(subpage)
-
-        # print(f"process SP {sp}")
-        self.image.update(update_pix, self.read_state())
+        # print(f"process SP {subpage.id}")
+        update_pix = self.raw.iter_subpage(subpage.iter_sp_pix())
+        self.image.update(update_pix, subpage, self.read_state())
         return self.image

@@ -77,7 +77,7 @@ class CameraCalibration:
         self.kv_ptat = eeprom['kv_ptat'] / 4096.0
         self.kt_ptat = eeprom['kt_ptat'] / 8.0
         self.ptat_25 = eeprom['ptat_25']
-        self.alpha_ptat = eeprom['k_ptat'] / 4.0 + 8
+        self.alpha_ptat = eeprom['k_ptat'] / 4.0 + 8.0
 
         # gain
         self.gain = eeprom['gain']
@@ -87,15 +87,31 @@ class CameraCalibration:
         self.pix_os_ref = Array2D.from_iter('h', NUM_COLS, self._calc_pix_os_ref(iface, eeprom))
 
         # IR data compensation
+        self.kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
+        self.kta_scale_2 = 1 << eeprom['kta_scale_2']
         self.pix_kta = Array2D.from_iter('f', NUM_COLS, self._calc_pix_kta(eeprom))
 
-        kv_scale = 1 << eeprom['kv_scale']
+        self.kv_scale = 1 << eeprom['kv_scale']
         self.kv_avg = (
             # index by [row % 2][col % 2]
-            (eeprom['kv_avg_re_ce']/kv_scale, eeprom['kv_avg_re_co']/kv_scale),
-            (eeprom['kv_avg_ro_ce']/kv_scale, eeprom['kv_avg_ro_co']/kv_scale),
+            (eeprom['kv_avg_re_ce']/self.kv_scale, eeprom['kv_avg_re_co']/self.kv_scale),
+            (eeprom['kv_avg_ro_ce']/self.kv_scale, eeprom['kv_avg_ro_co']/self.kv_scale),
         )
         
+        # IR gradient compensation
+        offset_cp_sp_0 = eeprom['offset_cp_sp_0']
+        offset_cp_sp_1 = offset_cp_sp_0 + eeprom['cp_offset_delta']
+        self.offset_cp = (offset_cp_sp_0, offset_cp_sp_1)
+
+        self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
+        self.kv_cp = eeprom['kv_cp'] / self.kv_scale
+
+        self.tgc = eeprom['tgc'] / 32.0
+
+        # interleaved pattern
+        self.il_chess_c1 = eeprom['il_chess_c1'] / 16.0
+        self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
+        self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
 
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']
@@ -121,12 +137,7 @@ class CameraCalibration:
             (eeprom['kta_avg_ro_ce'], eeprom['kta_avg_ro_co']),
         )
 
-        kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
-        kta_scale_2 = 1 << eeprom['kta_scale_2']
-        # print('kta_scale_1:', kta_scale_1)
-        # print('kta_scale_2:', kta_scale_2)
-
         for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
             kta_ee = self.pix_data.get_data(row, col)['kta']
             kta_rc = kta_avg[row % 2][col % 2]
-            yield (kta_rc + kta_ee * kta_scale_2)/kta_scale_1
+            yield (kta_rc + kta_ee * self.kta_scale_2)/self.kta_scale_1
