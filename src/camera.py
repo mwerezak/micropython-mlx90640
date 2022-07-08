@@ -7,25 +7,23 @@ from pinmap import I2C_CAMERA
 
 import mlx90640
 from mlx90640 import NUM_ROWS, NUM_COLS
+from mlx90640.image import InterleavedPattern
 
 from display import DISPLAY, PEN_DEFAULT_BG, PixMap, Rect, Gradient
 
 class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
-        self.refresh_rate = 4
+        self.camera.set_pattern(InterleavedPattern)
+        
+        # self.set_refresh_rate(2)
 
         self.update_event = Event()
         self.image_buf = Array2D.filled('f', NUM_ROWS, NUM_COLS)
 
-    @property
-    def refresh_rate(self):
-        return self.camera.read_refresh_rate()
-
-    @refresh_rate.setter
-    def refresh_rate(self, value):
-        self.camera.set_refresh_rate(value)
-        self._refresh_period = math.ceil(1000/self.camera.read_refresh_rate())
+    def set_refresh_rate(self, value):
+        self.camera.refresh_rate = value
+        self._refresh_period = math.ceil(1000/self.camera.refresh_rate)
 
     def run(self):
         event_loop = uasyncio.get_event_loop()
@@ -55,12 +53,12 @@ class CameraLoop:
         await uasyncio.wait_for_ms(self._wait_inner(), int(self._refresh_period))
 
     async def _wait_inner(self):
-        while not self.camera.has_data():
+        while not self.camera.has_data:
             await uasyncio.sleep_ms(50)
 
     async def stream_images(self):
         await uasyncio.sleep_ms(80 + 2 * int(self._refresh_period))
-        self.camera.read_calibration()
+        self.camera.setup()
 
         while True:
             await self.wait_for_data()

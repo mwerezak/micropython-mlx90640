@@ -6,7 +6,7 @@ from mlx90640.regmap import (
     CameraInterface,
 )
 from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS
-from mlx90640.image import RawImage, ProcessedImage
+from mlx90640.image import RawImage, ProcessedImage, get_pattern_by_id
 
 class CameraDetectError(Exception): pass
 
@@ -30,11 +30,10 @@ class RefreshRate:
     @classmethod
     def from_freq(cls, freq):
         _, value = min(
-            (abs(freq - cls.get_freq(value)), value)
-            for value in cls.values
+            (abs(freq - cls.get_freq(v)), v)
+            for v in cls.values
         )
         return value
-
 
 # container for momentary state needed for image compensation
 CameraState = namedtuple('CameraStat', ('vdd', 'ta', 'gain'))
@@ -51,15 +50,25 @@ class MLX90640:
         self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
         self.calib = None
         self.raw = None
+        self.image = None
+        self.last_read = None
 
-    def read_calibration(self):
-        self.calib = CameraCalibration(self.iface, self.eeprom)
-        self.raw = RawImage()
+    def setup(self, calib=None, raw=None, image=None):
+        self.calib = calib or CameraCalibration(self.iface, self.eeprom)
+        self.raw = raw or RawImage()
+        self.image = image or ProcessedImage(self.calib)
 
-    def read_refresh_rate(self):
+    @property
+    def refresh_rate(self):
         return RefreshRate.get_freq(self.registers['refresh_rate'])
-    def set_refresh_rate(self, freq):
+    @refresh_rate.setter
+    def refresh_rate(self, freq):
         self.registers['refresh_rate'] = RefreshRate.from_freq(freq)
+
+    def get_pattern(self):
+        return get_pattern_by_id(self.registers['read_pattern'])
+    def set_pattern(self, pat):
+        self.registers['read_pattern'] = pat.pattern_id
 
     def read_vdd(self):
         # supply voltage calculation (delta Vdd)
@@ -77,7 +86,7 @@ class MLX90640:
         # type: (self) -> float
         v_ptat = self.registers['ta_ptat']
         v_be = self.registers['ta_vbe']
-        v_ptat_art = v_ptat/( v_ptat*self.calib.alpha_ptat + v_be ) * (1 << 18)
+        v_ptat_art = v_ptat/(v_ptat*self.calib.alpha_ptat + v_be) * (1 << 18)
 
         v_ta = v_ptat_art/(1.0 + self.calib.kv_ptat*self.read_vdd() - self.calib.ptat_25)
 
@@ -99,17 +108,38 @@ class MLX90640:
             gain = self.read_gain(),
         )
 
+    @property
     def has_data(self):
         return bool(self.registers['data_available'])
 
+    @property
+    def last_subpage(self):
+        return self.registers['last_subpage']
+
     def read_image(self):
-        if not self.has_data():
+        if not self.has_data:
             raise DataNotAvailableError
 
-        self.raw.read(self.iface)
+        pat = self.get_pattern()
+        sp_idx = self.last_subpage
+        self.last_read = (pat.pattern_id, sp_idx)
+
+        print(f"read SP {sp_idx}")
+        subpage = pat.get_subpage(sp_idx)
+        self.raw.read(self.iface, subpage)
         self.registers['data_available'] = 0
         return self.raw
 
-    def process_image(self, raw_img=None):
-        raw_img = raw_img or self.raw
-        return ProcessedImage(raw_img.pix, self.calib, self.read_state())
+    def process_image(self):
+        if self.last_read is None:
+            raise DataNotAvailableError
+
+        pat_id, sp_idx = self.last_read
+        pat = get_pattern_by_id(pat_id)
+
+        subpage = pat.get_subpage(sp_idx)
+        update_pix = self.raw.iter_subpage(subpage)
+
+        print(f"process SP {sp_idx}")
+        self.image.update(update_pix, self.read_state())
+        return self.image
