@@ -127,7 +127,7 @@ class MLX90640:
         self.last_read = (pat, sp)
 
         # print(f"read SP {sp}")
-        subpage = pat.get_subpage(sp)
+        subpage = pat.iter_sp_pix(sp)
         self.raw.read(self.iface, subpage)
         self.registers['data_available'] = 0
         return self.raw
@@ -141,7 +141,7 @@ class MLX90640:
         else:
             pat, _ = self.last_read
 
-        subpage = pat.get_subpage(sp)
+        subpage = pat.iter_sp_pix(sp)
         update_pix = self.raw.iter_subpage(subpage)
 
         # print(f"process SP {sp}")

@@ -17,7 +17,7 @@ class ChessPattern:
     pattern_id = 0x1
 
     @classmethod
-    def get_subpage(cls, sp):
+    def iter_sp_pix(cls, sp):
         return (
             (row, col)
             for row in range(NUM_ROWS)
@@ -25,15 +25,29 @@ class ChessPattern:
             if (row + col) % 2 == sp
         )
 
+    @classmethod
+    def iter_sp(cls):
+        return (
+            (idx//32 - (idx//64)*2) ^ (idx - (idx//2)*2)
+            for idx in range(NUM_ROWS * NUM_COLS)
+        )
+
 class InterleavedPattern:
     pattern_id = 0x0
 
     @classmethod
-    def get_subpage(cls, sp):
+    def iter_sp_pix(cls, sp):
         return (
             (row, col)
             for row in range(sp, NUM_ROWS, 2)
             for col in range(NUM_COLS)
+        )
+
+    @classmethod
+    def iter_sp(cls):
+        return (
+            idx//32 - (idx//64)*2
+            for idx in range(NUM_ROWS * NUM_COLS)
         )
 
 _READ_PATTERNS = {
