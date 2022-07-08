@@ -1,12 +1,6 @@
-from mlx90640.regmap import (
-    REGISTER_MAP,
-    EEPROM_MAP,
-    CameraInterface, 
-    RegisterMap,
-)
-from mlx90640.calibration import (
-    CameraCalibration,
-)
+from bitutils import RegisterMap
+from mlx90640.regmap import REGISTER_MAP, EEPROM_MAP, CameraInterface
+from mlx90640.calibration import CameraCalibration
 from mlx90640.image import ImageData
 
 class CameraDetectError(Exception): pass

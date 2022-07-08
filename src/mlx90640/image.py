@@ -1,14 +1,12 @@
 import struct
-from mlx90640.regmap import (
+from bitutils import (
     Struct,
     StructProto,
     field_desc,
-)
-from mlx90640.calibration import (
     Array2D,
-    NUM_ROWS,
-    NUM_COLS,
 )
+
+from mlx90640.calibration import NUM_ROWS, NUM_COLS
 
 PIX_DATA_ADDRESS = const(0x0400)
 PIX_STRUCT_FMT = const('>h')

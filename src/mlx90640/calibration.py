@@ -1,12 +1,10 @@
-import struct
-from array import array
-from mlx90640.regmap import (
+from bitutils import (
     Struct, 
     StructProto,
     field_desc,
-    REG_SIZE,
+    Array2D,
 )
-
+from mlx90640.regmap import REG_SIZE
 
 NUM_ROWS = const(24)
 NUM_COLS = const(32)
@@ -35,6 +33,12 @@ def _read_cc_iter(iface, base, size):
         yield struct['2']
         yield struct['3']
 
+def read_occ_rows(iface):
+    return _read_cc_iter(iface, OCC_ROWS_ADDRESS, NUM_ROWS)
+
+def read_occ_cols(iface):
+    return _read_cc_iter(iface, OCC_COLS_ADDRESS, NUM_COLS)
+
 
 PIX_CALIB_PROTO = StructProto((
     field_desc('offset',  6, 10, signed=True),
@@ -44,38 +48,6 @@ PIX_CALIB_PROTO = StructProto((
 ))
 
 PIX_CALIB_ADDRESS = const(0x2440)
-
-
-class Array2D:
-    def __init__(self, typecode, stride, init):
-        self.stride = stride
-        self._array = array(typecode, init)
-    
-    def __getitem__(self, idx):
-        i, j = idx
-        return self._array[i * self.stride + j]
-    def __setitem__(self, idx, value):
-        i, j = idx
-        self._array[i * self.stride + j] = value
-
-    @classmethod
-    def index_range(cls, num_strides, stride):
-        # yields i,j pairs for an Array2D with the given shape
-        # useful for generating the init sequence
-        for i in range(num_strides):
-            for j in range(stride):
-                yield i, j
-
-    def __len__(self):
-        return len(self._array)
-    def __iter__(self):
-        return iter(self._array)
-
-    def iter_indexed(self):
-        num_strides = (len(self._array) + self.stride - 1)//self.stride
-        indices = self.index_range(num_strides, self.stride)
-        for pair, value in zip(indices, self._array):
-            yield pair[0], pair[1], value
 
 
 class PixelCalibrationData:
@@ -113,7 +85,7 @@ class CameraCalibration:
 
         # pixel calibration data
         self.pix_data = PixelCalibrationData(iface)
-        self.pix_os_ref = Array2D('h', NUM_COLS, self._calc_pix_os_ref(eeprom))
+        self.pix_os_ref = Array2D('h', NUM_COLS, self._calc_pix_os_ref(iface, eeprom))
 
         # IR data compensation
         self.pix_kta = Array2D('f', NUM_COLS, self._calc_pix_kta(eeprom))
@@ -126,14 +98,14 @@ class CameraCalibration:
         )
         
 
-    def _calc_pix_os_ref(self, eeprom):
+    def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']
         occ_scale_row = (1 << eeprom['scale_occ_row'])
         occ_scale_col = (1 << eeprom['scale_occ_col'])
         occ_scale_rem = (1 << eeprom['scale_occ_rem'])
 
-        occ_rows = tuple(_read_cc_iter(eeprom.iface, OCC_ROWS_ADDRESS, NUM_ROWS))
-        occ_cols = tuple(_read_cc_iter(eeprom.iface, OCC_COLS_ADDRESS, NUM_COLS))
+        occ_rows = tuple(read_occ_rows(iface))
+        occ_cols = tuple(read_occ_cols(iface))
 
         for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
             yield (
