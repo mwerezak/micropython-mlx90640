@@ -129,25 +129,20 @@ class Array2D:
         self.stride = stride
         self._array = array(typecode, init)
     
-    def __getitem__(self, idx):
-        i, j = idx
-        return self._array[i * self.stride + j]
-    def __setitem__(self, idx, value):
-        i, j = idx
-        self._array[i * self.stride + j] = value
-
-    @classmethod
-    def index_range(cls, num_strides, stride):
-        # yields i,j pairs for an Array2D with the given shape
-        # useful for generating the init sequence
-        for i in range(num_strides):
-            for j in range(stride):
-                yield i, j
-
+    # preserve array interface for efficient iteration
     def __len__(self):
         return len(self._array)
     def __iter__(self):
         return iter(self._array)
+    def __getitem__(self, idx):
+        return self._array[idx]
+    def __setitem__(self, idx, value):
+        self._array[idx] = value
+
+    def get_coord(self, i, j):
+        return self._array[i * self.stride + j]
+    def set_coord(self, i, j, value):
+        self._array[i * self.stride + j] = value
 
     def iter_indexed(self):
         num_strides = (len(self._array) + self.stride - 1)//self.stride
@@ -155,3 +150,10 @@ class Array2D:
         for pair, value in zip(indices, self._array):
             yield pair[0], pair[1], value
 
+    # very useful for generating the init sequence
+    @classmethod
+    def index_range(cls, num_strides, stride):
+        # yields i,j pairs for an Array2D with the given shape
+        for i in range(num_strides):
+            for j in range(stride):
+                yield i, j

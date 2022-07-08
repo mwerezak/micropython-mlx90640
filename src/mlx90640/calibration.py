@@ -58,9 +58,8 @@ class PixelCalibrationData:
             offset = idx * REG_SIZE
             iface.read_into(PIX_CALIB_ADDRESS + offset, self._data[offset:offset+REG_SIZE])
 
-    def __getitem__(self, pixel):
+    def get_data(self, row, col):
         # type: (row, col) -> Struct
-        row, col = pixel
         idx = row * NUM_COLS + col
         offset = idx * REG_SIZE
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
@@ -112,7 +111,7 @@ class CameraCalibration:
                 offset_avg
                 + occ_rows[row] * occ_scale_row
                 + occ_cols[col] * occ_scale_col
-                + self.pix_data[row, col]['offset'] * occ_scale_rem
+                + self.pix_data.get_data(row, col)['offset'] * occ_scale_rem
             )
 
     def _calc_pix_kta(self, eeprom):
@@ -128,6 +127,6 @@ class CameraCalibration:
         print('kta_scale_2:', kta_scale_2)
 
         for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
-            kta_ee = self.pix_data[row, col]['kta']
+            kta_ee = self.pix_data.get_data(row, col)['kta']
             kta_rc = kta_avg[row % 2][col % 2]
             yield (kta_rc + kta_ee * kta_scale_2)/kta_scale_1

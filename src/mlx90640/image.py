@@ -20,7 +20,7 @@ class ImageData:
         self.delta_ta = delta_ta
         self.delta_vdd = delta_vdd
 
-        pix_data = self._read_raw_pix(iface)
+        pix_data = tuple(self._read_raw_pix(iface))
         pix_data = self._calc_pix_offsets(pix_data)
         self._pix = Array2D('f', NUM_COLS, pix_data)
 
@@ -34,7 +34,7 @@ class ImageData:
     def _calc_pix_offsets(self, raw_pix):
         for value, idx in zip(raw_pix, Array2D.index_range(NUM_ROWS, NUM_COLS)):
             row, col = idx
-            kta = self.calib.pix_kta[row, col]
+            kta = self.calib.pix_kta.get_coord(row, col)
             kv = self.calib.kv_avg[row % 2][col % 2]
-            os_ref = self.calib.pix_os_ref[row, col]
+            os_ref = self.calib.pix_os_ref.get_coord(row, col)
             yield value*self.gain - os_ref*(1 + kta*self.delta_ta)*(1 + kv*self.delta_vdd)
