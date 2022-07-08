@@ -22,7 +22,11 @@ class ImageData:
 
         pix_data = tuple(self._read_raw_pix(iface))
         pix_data = self._calc_pix_offsets(pix_data)
-        self._pix = Array2D('f', NUM_COLS, pix_data)
+        self.pix = Array2D('f', NUM_COLS, pix_data)
+
+    @property
+    def pixbuf(self):
+        return self.pix.array
 
     @staticmethod
     def _read_raw_pix(iface):

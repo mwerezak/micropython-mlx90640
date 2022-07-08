@@ -10,6 +10,33 @@ PEN_PIXMAP_1 = DISPLAY.create_pen(240, 240, 240)
 
 Rect = namedtuple('Rect', ('x', 'y', 'width', 'height'))
 
+# linear interpolation helper
+class Lerp:
+    def __init__(self, in_scale, out_scale):
+        in_min, in_max = in_scale
+        out_min, out_max = out_scale
+        self._slope = (out_max - out_min)/(in_max - in_min)
+        self._in0 = in_min
+        self._out0 = out_min
+
+    def __call__(self, x):
+        return (x - self._out0)*self._slope + self._out0
+
+# simple value-scale
+class Gradient:
+    def __init__(self, h_scale=(0, 1)):
+        self.h_scale = h_scale
+
+    @staticmethod
+    def _lerp(x, in_scale, out_scale):
+        m = (out_scale[1] - out_scale[0])/(in_scale[1] - in_scale[0])
+        return (x - in_scale[0])*m + out_scale[0]
+
+    def get_color(self, h):
+        v = int(round(self._lerp(h, self.h_scale, (0, 255))))
+        return DISPLAY.create_pen(v, v, v)
+
+
 class PixMap:
     def __init__(self, width, height, buf):
         # element size
@@ -43,4 +70,12 @@ class PixMap:
                 x = int(round(self.draw_rect.x + i*self.draw_scale))
                 y = int(round(self.draw_rect.y + j*self.draw_scale))
                 display.rectangle(x, y, square_size, square_size)
+
+    def draw_map(self, display, gradient):
+        square_size = int(round(self.draw_scale))
+        for i, j, value in self.buf.iter_indexed():
+            display.set_pen(gradient.get_color(value))
+            x = int(round(self.draw_rect.x + i*self.draw_scale))
+            y = int(round(self.draw_rect.y + j*self.draw_scale))
+            display.rectangle(x, y, square_size, square_size)
 

@@ -123,8 +123,8 @@ class CameraCalibration:
 
         kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
         kta_scale_2 = 1 << eeprom['kta_scale_2']
-        print('kta_scale_1:', kta_scale_1)
-        print('kta_scale_2:', kta_scale_2)
+        # print('kta_scale_1:', kta_scale_1)
+        # print('kta_scale_2:', kta_scale_2)
 
         for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
             kta_ee = self.pix_data.get_data(row, col)['kta']

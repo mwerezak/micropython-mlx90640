@@ -127,27 +127,27 @@ class RegisterMap:
 class Array2D:
     def __init__(self, typecode, stride, init):
         self.stride = stride
-        self._array = array(typecode, init)
+        self.array = array(typecode, init)
     
     # preserve array interface for efficient iteration
     def __len__(self):
-        return len(self._array)
+        return len(self.array)
     def __iter__(self):
-        return iter(self._array)
+        return iter(self.array)
     def __getitem__(self, idx):
-        return self._array[idx]
+        return self.array[idx]
     def __setitem__(self, idx, value):
-        self._array[idx] = value
+        self.array[idx] = value
 
     def get_coord(self, i, j):
-        return self._array[i * self.stride + j]
+        return self.array[i * self.stride + j]
     def set_coord(self, i, j, value):
-        self._array[i * self.stride + j] = value
+        self.array[i * self.stride + j] = value
 
     def iter_indexed(self):
-        num_strides = (len(self._array) + self.stride - 1)//self.stride
+        num_strides = (len(self.array) + self.stride - 1)//self.stride
         indices = self.index_range(num_strides, self.stride)
-        for pair, value in zip(indices, self._array):
+        for pair, value in zip(indices, self.array):
             yield pair[0], pair[1], value
 
     # very useful for generating the init sequence
