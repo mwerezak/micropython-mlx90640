@@ -19,6 +19,7 @@ DISPLAY.update()
 
 camera = mlx90640.detect_camera(I2C_CAMERA)
 camera.set_refresh_rate(4)
+camera.read_calibration()
 
 for im in camera.stream_images():
     buf[:] = im.pixbuf

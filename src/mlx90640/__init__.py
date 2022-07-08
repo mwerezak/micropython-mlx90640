@@ -72,7 +72,9 @@ class MLX90640:
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)
         self.eeprom = RegisterMap(self.iface, EEPROM_MAP, readonly=True)
+        self.calib = None
 
+    def read_calibration(self):
         _power_on_delay(self.read_refresh_rate())
         self.calib = CameraCalibration(self.iface, self.eeprom)
 
