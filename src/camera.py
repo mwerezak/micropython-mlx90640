@@ -10,7 +10,7 @@ from mlx90640 import NUM_ROWS, NUM_COLS
 
 from display import DISPLAY, PEN_DEFAULT_BG, PixMap, Rect, Gradient
 
-class MainLoop:
+class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
         self.refresh_rate = 4
@@ -26,6 +26,12 @@ class MainLoop:
     def refresh_rate(self, value):
         self.camera.set_refresh_rate(value)
         self._refresh_period = math.ceil(1000/self.camera.read_refresh_rate())
+
+    def run(self):
+        event_loop = uasyncio.get_event_loop()
+        event_loop.create_task(self.display_images())
+        event_loop.create_task(self.stream_images())
+        event_loop.run_forever()
 
     async def display_images(self):
         DISPLAY.set_pen(PEN_DEFAULT_BG)
@@ -64,10 +70,3 @@ class MainLoop:
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))
-
-
-main = MainLoop()
-event_loop = uasyncio.get_event_loop()
-event_loop.create_task(main.display_images())
-event_loop.create_task(main.stream_images())
-event_loop.run_forever()
