@@ -7,16 +7,17 @@ from pinmap import I2C_CAMERA
 
 import mlx90640
 from mlx90640 import NUM_ROWS, NUM_COLS
-from mlx90640.image import InterleavedPattern
+from mlx90640.image import ChessPattern, InterleavedPattern
 
 from display import DISPLAY, PEN_DEFAULT_BG, PixMap, Rect, Gradient
 
 class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
-        self.camera.set_pattern(InterleavedPattern)
+        self._refresh_period = math.ceil(1000/self.camera.refresh_rate)
         
-        # self.set_refresh_rate(2)
+        self.camera.set_pattern(ChessPattern)
+        self.set_refresh_rate(8)
 
         self.update_event = Event()
         self.image_buf = Array2D.filled('f', NUM_ROWS, NUM_COLS)
@@ -60,10 +61,13 @@ class CameraLoop:
         await uasyncio.sleep_ms(80 + 2 * int(self._refresh_period))
         self.camera.setup()
 
+        sp = 0
         while True:
             await self.wait_for_data()
-            self.camera.read_image()
-            im = self.camera.process_image()
+            self.camera.read_image(sp)
+            im = self.camera.process_image(sp)
+            sp = int(not sp)
+            
             self.image_buf[:] = im.pix.array
             self.update_event.set()
 

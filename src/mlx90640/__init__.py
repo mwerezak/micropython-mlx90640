@@ -116,30 +116,34 @@ class MLX90640:
     def last_subpage(self):
         return self.registers['last_subpage']
 
-    def read_image(self):
+    def read_image(self, sp = None):
         if not self.has_data:
             raise DataNotAvailableError
+        
+        if sp is None:
+            sp = self.last_subpage
 
         pat = self.get_pattern()
-        sp_idx = self.last_subpage
-        self.last_read = (pat.pattern_id, sp_idx)
+        self.last_read = (pat, sp)
 
-        print(f"read SP {sp_idx}")
-        subpage = pat.get_subpage(sp_idx)
+        # print(f"read SP {sp}")
+        subpage = pat.get_subpage(sp)
         self.raw.read(self.iface, subpage)
         self.registers['data_available'] = 0
         return self.raw
 
-    def process_image(self):
+    def process_image(self, sp = None):
         if self.last_read is None:
             raise DataNotAvailableError
 
-        pat_id, sp_idx = self.last_read
-        pat = get_pattern_by_id(pat_id)
+        if sp is None:
+            pat, sp = self.last_read
+        else:
+            pat, _ = self.last_read
 
-        subpage = pat.get_subpage(sp_idx)
+        subpage = pat.get_subpage(sp)
         update_pix = self.raw.iter_subpage(subpage)
 
-        print(f"process SP {sp_idx}")
+        # print(f"process SP {sp}")
         self.image.update(update_pix, self.read_state())
         return self.image

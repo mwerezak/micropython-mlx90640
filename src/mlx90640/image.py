@@ -17,22 +17,22 @@ class ChessPattern:
     pattern_id = 0x1
 
     @classmethod
-    def get_subpage(cls, sp_idx):
+    def get_subpage(cls, sp):
         return (
             (row, col)
             for row in range(NUM_ROWS)
             for col in range(NUM_COLS)
-            if (row + col) % 2 == sp_idx
+            if (row + col) % 2 == sp
         )
 
 class InterleavedPattern:
     pattern_id = 0x0
 
     @classmethod
-    def get_subpage(cls, sp_idx):
+    def get_subpage(cls, sp):
         return (
             (row, col)
-            for row in range(sp_idx, NUM_ROWS, 2)
+            for row in range(sp, NUM_ROWS, 2)
             for col in range(NUM_COLS)
         )
 
