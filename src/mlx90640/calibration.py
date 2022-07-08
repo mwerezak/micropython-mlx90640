@@ -1,4 +1,4 @@
-from bitutils import (
+from utils import (
     Struct, 
     StructProto,
     field_desc,
@@ -23,7 +23,7 @@ CC_PROTO = StructProto((
 ))
 
 def _read_cc_iter(iface, base, size):
-    buf = bytearray(2)
+    buf = bytearray(REG_SIZE)
     struct = Struct(buf, CC_PROTO)
     for addr_off in range(size // 4):
         cc_addr = base + addr_off
@@ -84,10 +84,10 @@ class CameraCalibration:
 
         # pixel calibration data
         self.pix_data = PixelCalibrationData(iface)
-        self.pix_os_ref = Array2D('h', NUM_COLS, self._calc_pix_os_ref(iface, eeprom))
+        self.pix_os_ref = Array2D.from_iter('h', NUM_COLS, self._calc_pix_os_ref(iface, eeprom))
 
         # IR data compensation
-        self.pix_kta = Array2D('f', NUM_COLS, self._calc_pix_kta(eeprom))
+        self.pix_kta = Array2D.from_iter('f', NUM_COLS, self._calc_pix_kta(eeprom))
 
         kv_scale = 1 << eeprom['kv_scale']
         self.kv_avg = (
@@ -106,7 +106,7 @@ class CameraCalibration:
         occ_rows = tuple(read_occ_rows(iface))
         occ_cols = tuple(read_occ_cols(iface))
 
-        for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
+        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
             yield (
                 offset_avg
                 + occ_rows[row] * occ_scale_row
@@ -126,7 +126,7 @@ class CameraCalibration:
         # print('kta_scale_1:', kta_scale_1)
         # print('kta_scale_2:', kta_scale_2)
 
-        for row, col in Array2D.index_range(NUM_ROWS, NUM_COLS):
+        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
             kta_ee = self.pix_data.get_data(row, col)['kta']
             kta_rc = kta_avg[row % 2][col % 2]
             yield (kta_rc + kta_ee * kta_scale_2)/kta_scale_1

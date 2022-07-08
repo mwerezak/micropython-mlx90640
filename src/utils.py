@@ -69,9 +69,21 @@ class Struct:
         setattr(self._struct, name, value)
 
 class Array2D:
-    def __init__(self, typecode, stride, init):
+    @classmethod
+    def filled(cls, typecode, num_strides, stride, fill=0):
+        # create a new Array2D with it's own buffer 
+        # filled with zeros or another value
+        fill_iter = (fill for i in range(num_strides * stride))
+        return cls.from_iter(typecode, stride, fill_iter)
+
+    @classmethod
+    def from_iter(cls, typecode, stride, iterable):
+        buf = array(typecode, iterable)
+        return cls(buf, stride)
+
+    def __init__(self, buf, stride):
         self.stride = stride
-        self.array = array(typecode, init)
+        self.array = buf
     
     # preserve array interface for efficient iteration
     def __len__(self):
@@ -89,14 +101,14 @@ class Array2D:
         self.array[i * self.stride + j] = value
 
     def iter_indexed(self):
-        num_strides = (len(self.array) + self.stride - 1)//self.stride
-        indices = self.index_range(num_strides, self.stride)
+        num_strides = len(self.array)//self.stride + 1
+        indices = self.range(num_strides, self.stride)
         for pair, value in zip(indices, self.array):
             yield pair[0], pair[1], value
 
     # very useful for generating the init sequence
     @classmethod
-    def index_range(cls, num_strides, stride):
+    def range(cls, num_strides, stride):
         # yields i,j pairs for an Array2D with the given shape
         for i in range(num_strides):
             for j in range(stride):

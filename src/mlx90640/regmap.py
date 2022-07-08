@@ -1,7 +1,7 @@
 """ MLX90640 register mapping
 """
 
-from bitutils import (
+from utils import (
     field_desc,
     FieldDesc,
     FD_BYTE,
