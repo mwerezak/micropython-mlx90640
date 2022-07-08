@@ -30,13 +30,36 @@ class RefreshRate:
     R32HZ  = const(0x6)
     R64HZ  = const(0x7)
 
+    values = (
+        R0_5HZ,
+        R1HZ,
+        R2HZ,
+        R4HZ,
+        R8HZ,
+        R16HZ,
+        R32HZ,
+        R64HZ,
+    )
+
     @classmethod
     def get_freq(cls, value):
         return 2.0**(value - 1)
 
+    @classmethod
+    def from_freq(cls, freq):
+        _, value = min(
+            (abs(freq - cls.get_freq(value)), value)
+            for value in cls.values
+        )
+        return value
+
 # wait 80ms + delay determined by the refresh rate
 def _power_on_delay(refresh_rate):
     delay_ms = int(80 + 2*1000/refresh_rate) + 1
+    time.sleep_ms(delay_ms)
+
+def _read_wait_delay(refresh_rate):
+    delay_ms = int(1000/refresh_rate)
     time.sleep_ms(delay_ms)
 
 class DataNotAvailableError(Exception): pass
@@ -55,6 +78,8 @@ class MLX90640:
 
     def read_refresh_rate(self):
         return RefreshRate.get_freq(self.registers['refresh_rate'])
+    def set_refresh_rate(self, freq):
+        self.registers['refresh_rate'] = RefreshRate.from_freq(freq)
 
     def read_vdd(self, vdd0 = 3.3):
         # supply voltage calculation
@@ -110,3 +135,24 @@ class MLX90640:
             self._delta_ta(),
             self._delta_vdd(),
         )
+
+    def stream_images(self):
+        if not self.has_data():
+            raise DataNotAvailableError
+
+        while True:
+            pix_data = tuple(read_raw_image(self.iface))
+            self.registers['data_available'] = 0
+
+            yield ImageData(
+                pix_data,
+                self.calib,
+                self.read_gain(),
+                self._delta_ta(),
+                self._delta_vdd(),
+            )
+
+            _read_wait_delay(self.read_refresh_rate())
+            while not self.has_data():
+                time.sleep_ms(10)
+

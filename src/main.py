@@ -18,10 +18,10 @@ pixmap.draw_dummy(DISPLAY)
 DISPLAY.update()
 
 camera = mlx90640.detect_camera(I2C_CAMERA)
+camera.set_refresh_rate(4)
 
-im = camera.read_image()
-
-buf[:] = im.pixbuf
-gradient = Gradient((min(buf), max(buf)))
-pixmap.draw_map(DISPLAY, gradient)
-DISPLAY.update()
+for im in camera.stream_images():
+    buf[:] = im.pixbuf
+    gradient = Gradient((min(buf), max(buf)))
+    pixmap.draw_map(DISPLAY, gradient)
+    DISPLAY.update()
