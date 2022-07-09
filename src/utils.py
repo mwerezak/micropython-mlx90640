@@ -79,11 +79,14 @@ class Array2D:
     @classmethod
     def from_iter(cls, typecode, stride, iterable):
         buf = array(typecode, iterable)
-        return cls(buf, stride)
+        return cls(stride, buf)
 
-    def __init__(self, buf, stride):
+    def __init__(self, stride, buf):
         self.stride = stride
         self.array = buf
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({repr(self.stride)}, {repr(self.array)})'
     
     # preserve array interface for efficient iteration
     def __len__(self):

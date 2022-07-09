@@ -107,7 +107,7 @@ EEPROM_MAP = {
         field_desc('alpha_cp_sp_0', 10,  0),
     ),
     0x243A : (
-        field_desc('cp_offset_delta',  6, 10, signed=True),
+        field_desc('offset_cp_delta',  6, 10, signed=True),
         field_desc('offset_cp_sp_0',  10,  0, signed=True),
     ),
     0x243B : (

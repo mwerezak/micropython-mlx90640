@@ -17,6 +17,7 @@ class CameraLoop:
         self._refresh_period = math.ceil(1000/self.camera.refresh_rate)
         
         self.camera.set_pattern(ChessPattern)
+        # self.camera.set_pattern(InterleavedPattern)
         self.set_refresh_rate(8)
 
         self.update_event = Event()

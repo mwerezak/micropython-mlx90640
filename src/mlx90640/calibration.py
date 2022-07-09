@@ -65,7 +65,7 @@ class PixelCalibrationData:
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
 
 class CameraCalibration:
-    def __init__(self, iface, eeprom):
+    def __init__(self, iface, eeprom, *, use_tgc=False):
         # restore VDD sensor parameters
         self.k_vdd = eeprom['k_vdd'] * 32
         self.vdd_25 = (eeprom['vdd_25'] - 256) * 32 - 8192
@@ -100,18 +100,21 @@ class CameraCalibration:
         
         # IR gradient compensation
         offset_cp_sp_0 = eeprom['offset_cp_sp_0']
-        offset_cp_sp_1 = offset_cp_sp_0 + eeprom['cp_offset_delta']
+        offset_cp_sp_1 = offset_cp_sp_0 + eeprom['offset_cp_delta']
         self.pix_os_cp = (offset_cp_sp_0, offset_cp_sp_1)
 
         self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
         self.kv_cp = eeprom['kv_cp'] / self.kv_scale
 
-        self.tgc = eeprom['tgc'] / 32.0
+        # tgc only available for device type 'C'
+        self.tgc = eeprom['tgc'] / 32.0 if use_tgc else False
 
         # interleaved pattern
         self.il_chess_c1 = eeprom['il_chess_c1'] / 16.0
         self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
         self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
+
+        self.il_offset = Array2D.from_iter('f', NUM_COLS, self._calc_il_offset())
 
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']
@@ -141,3 +144,15 @@ class CameraCalibration:
             kta_ee = self.pix_data.get_data(row, col)['kta']
             kta_rc = kta_avg[row % 2][col % 2]
             yield (kta_rc + kta_ee * self.kta_scale_2)/self.kta_scale_1
+
+    def _calc_il_offset(self):
+        for idx in range(NUM_ROWS*NUM_COLS):
+            il_pattern = idx//32 - (idx//64)*2
+            conv_pattern = (
+                ((idx-2)//4 - (idx-1)//4 + (idx+1)//4 - (idx-1)//4)
+                * (1 - 2*il_pattern)
+            )
+            yield (
+                self.il_chess_c3*(2*il_pattern - 1) 
+                - self.il_chess_c2*conv_pattern
+            )

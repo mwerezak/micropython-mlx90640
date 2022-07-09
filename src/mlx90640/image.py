@@ -102,21 +102,22 @@ class ProcessedImage:
 
     def update(self, pix_data, subpage, state):
         pix_os_cp = self._calc_os_cp(subpage, state)
-        # pix_os_cp = self._calc_os_cp2(subpage.pattern, state)
-
         for row, col, raw in pix_data:
             ## IR data compensation - offset, Vdd, and Ta
             kta = self.calib.pix_kta.get_coord(row, col)
             kv = self.calib.kv_avg[row % 2][col % 2]
             os_ref = self.calib.pix_os_ref.get_coord(row, col)
             v_os = raw*state.gain - os_ref*(1 + kta*state.ta)*(1 + kv*state.vdd)
+            if subpage.pattern is InterleavedPattern:
+                v_os += self.calib.il_offset.get_coord(row, col)
+            v_ir = v_os / _EMISSIVITY
 
             ## IR data gradient compensation
-            idx = row*NUM_COLS + col
-            # v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp
-            #v_ir = v_os/_EMISSIVITY - self.calib.tgc*pix_os_cp[subpage.pattern.get_sp(idx)]
-            # self.pix[idx] = v_ir
-            self.pix[idx] = v_os/_EMISSIVITY
+            if self.calib.tgc:
+                v_ir -= self.calib.tgc*pix_os_cp
+
+            self.pix.set_coord(row, col, v_ir)
+
 
     def _calc_os_cp(self, subpage, state):
         pix_os_cp = self.calib.pix_os_cp[subpage.id]
