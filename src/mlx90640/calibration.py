@@ -35,14 +35,17 @@ def _read_cc_iter(iface, base, size):
 
 def read_occ_rows(iface):
     return _read_cc_iter(iface, OCC_ROWS_ADDRESS, NUM_ROWS)
-
 def read_occ_cols(iface):
     return _read_cc_iter(iface, OCC_COLS_ADDRESS, NUM_COLS)
 
+def read_acc_rows(iface):
+    return _read_cc_iter(iface, ACC_ROWS_ADDRESS, NUM_ROWS)
+def read_acc_cols(iface):
+    return _read_cc_iter(iface, ACC_COLS_ADDRESS, NUM_COLS)
 
 PIX_CALIB_PROTO = StructProto((
     field_desc('offset',  6, 10, signed=True),
-    field_desc('alpha',   6,  4),
+    field_desc('alpha',   6,  4, signed=True),
     field_desc('kta',     3,  1, signed=True),
     field_desc('outlier', 1,  0),
 ))
@@ -116,11 +119,21 @@ class CameraCalibration:
 
         self.il_offset = Array2D.from_iter('f', NUM_COLS, self._calc_il_offset())
 
+        # sensitivity normalization
+        self.pix_alpha = Array2D.from_iter('f', NUM_COLS, self._calc_pix_alpha_ref(iface, eeprom))
+        self.ksta = eeprom['ksta'] / 8192.0
+
+        alpha_scale_cp = 1 << (eeprom['alpha_scale'] + 27)
+        cp_sp_ratio = eeprom['cp_sp_ratio']
+        pix_alpha_cp_sp_0 = eeprom['alpha_cp_sp_0'] / alpha_scale_cp
+        pix_alpha_cp_sp_1 = pix_alpha_cp_sp_0*(1 + cp_sp_ratio/128.0)
+        self.pix_alpha_cp = (pix_alpha_cp_sp_0, pix_alpha_cp_sp_1)
+
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']
-        occ_scale_row = (1 << eeprom['scale_occ_row'])
-        occ_scale_col = (1 << eeprom['scale_occ_col'])
-        occ_scale_rem = (1 << eeprom['scale_occ_rem'])
+        occ_scale_row = 1 << eeprom['scale_occ_row']
+        occ_scale_col = 1 << eeprom['scale_occ_col']
+        occ_scale_rem = 1 << eeprom['scale_occ_rem']
 
         occ_rows = tuple(read_occ_rows(iface))
         occ_cols = tuple(read_occ_cols(iface))
@@ -132,6 +145,24 @@ class CameraCalibration:
                 + occ_cols[col] * occ_scale_col
                 + self.pix_data.get_data(row, col)['offset'] * occ_scale_rem
             )
+
+    def _calc_pix_alpha_ref(self, iface, eeprom):
+        alpha_ref = eeprom['pix_sensitivity_average']
+        alpha_scale = 1 << (eeprom['alpha_scale'] + 30)
+        acc_scale_row = 1 << eeprom['scale_acc_row']
+        acc_scale_col = 1 << eeprom['scale_acc_col']
+        acc_scale_rem = 1 << eeprom['scale_acc_rem']
+
+        acc_rows = tuple(read_acc_rows(iface))
+        acc_cols = tuple(read_acc_cols(iface))
+
+        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
+            yield (
+                alpha_ref
+                + acc_rows[row] * acc_scale_row
+                + acc_cols[col] * acc_scale_col
+                + self.pix_data.get_data(row, col)['alpha'] * acc_scale_rem
+            ) / alpha_scale
 
     def _calc_pix_kta(self, eeprom):
         # index by [row % 2][col % 2]

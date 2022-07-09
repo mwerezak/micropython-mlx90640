@@ -61,10 +61,10 @@ EEPROM_MAP = {
     ),
     0x2411 : field_desc('pix_os_average', FD_WORD, signed=True),
     0x2420 : (
-        field_desc('alpha_scale',    4, 12, signed=True),
-        field_desc('scale_acc_row',  4,  8, signed=True),
-        field_desc('scale_acc_col',  4,  4, signed=True),
-        field_desc('scale_acc_rem',  4,  0, signed=True),
+        field_desc('alpha_scale',    4, 12),
+        field_desc('scale_acc_row',  4,  8),
+        field_desc('scale_acc_col',  4,  4),
+        field_desc('scale_acc_rem',  4,  0),
     ),
     0x2421 : field_desc('pix_sensitivity_average', FD_WORD),
     0x2430 : field_desc('gain',    FD_WORD, signed=True),
@@ -103,7 +103,7 @@ EEPROM_MAP = {
         field_desc('kta_scale_2',  4,  0),
     ),
     0x2439 : (
-        field_desc('cp_sp_ratio',    6, 10),
+        field_desc('cp_sp_ratio',    6, 10, signed=True),
         field_desc('alpha_cp_sp_0', 10,  0),
     ),
     0x243A : (
