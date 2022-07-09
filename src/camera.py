@@ -70,7 +70,8 @@ class CameraLoop:
             im = self.camera.process_image(sp)
             sp = int(not sp)
             
-            self.image_buf[:] = im[:]
+            for idx in range(len(self.image_buf)):
+                self.image_buf[idx] = im.v_ir[idx]/im.alpha[idx]
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))

@@ -66,7 +66,9 @@ class PixelCalibrationData:
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
 
 class CameraCalibration:
-    def __init__(self, iface, eeprom, *, use_tgc=False):
+    def __init__(self, iface, eeprom, *, emissivity=1, use_tgc=False):
+        self.emissivity = emissivity
+
         # restore VDD sensor parameters
         self.k_vdd = eeprom['k_vdd'] * 32
         self.vdd_25 = (eeprom['vdd_25'] - 256) * 32 - 8192
@@ -130,6 +132,11 @@ class CameraCalibration:
         self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
         self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
         self.il_offset = array('f', self._calc_il_offset())
+
+        # temperature calculation
+        self.ksto_scale = 1 << (eeprom['ksto_scale'] + 8)
+        self.ksto1 = eeprom['ksto_1'] / self.ksto_scale
+        self.ksto2 = eeprom['ksto_2'] / self.ksto_scale
 
 
     def _calc_pix_os_ref(self, iface, eeprom):

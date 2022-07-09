@@ -86,7 +86,7 @@ class MLX90640:
         # type: (self) -> float
         v_ptat = self.registers['ta_ptat']
         v_be = self.registers['ta_vbe']
-        v_ptat_art = v_ptat/(v_ptat*self.calib.alpha_ptat + v_be) * (1 << 18)
+        v_ptat_art = v_ptat/(v_ptat*self.calib.alpha_ptat + v_be) * 262144
 
         v_ta = v_ptat_art/(1.0 + self.calib.kv_ptat*self.read_vdd() - self.calib.ptat_25)
 

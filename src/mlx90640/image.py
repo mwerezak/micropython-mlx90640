@@ -75,16 +75,13 @@ class RawImage:
             iface.read_into(PIX_DATA_ADDRESS + offset, buf)
             self._buf[offset] = struct.unpack(PIX_STRUCT_FMT, buf)[0]
 
-_EMISSIVITY = const(1)
 
 class ProcessedImage:
     def __init__(self, calib):
         # pix_data should be a sequence of ints
         self.calib = calib
-        self._buf = array_filled('f', NUM_ROWS*NUM_COLS)
-
-    def __getitem__(self, idx):
-        return self._buf[idx]
+        self.v_ir = array_filled('f', NUM_ROWS*NUM_COLS, 0.0)
+        self.alpha = array_filled('f', NUM_ROWS*NUM_COLS, 1.0)
 
     def update(self, pix_data, subpage, state):
         if self.calib.use_tgc:
@@ -102,23 +99,21 @@ class ProcessedImage:
             offset *= (1 + kta*state.ta)*(1 + kv*state.vdd)
 
             v_os = raw*state.gain - offset
-
             if subpage.pattern is InterleavedPattern:
                 v_os += self.calib.il_offset[idx]
-            v_ir = v_os / _EMISSIVITY
+            v_ir = v_os / self.calib.emissivity
 
             ## IR data gradient compensation
             if self.calib.use_tgc:
                 v_ir -= self.calib.tgc*pix_os_cp
+            self.v_ir[idx] = v_ir
 
             ## sensitivity normalization
             alpha = self.calib.pix_alpha[idx]
             if self.calib.use_tgc:
                 alpha -= self.calib.tgc*pix_alpha_cp
             alpha *= (1 + self.calib.ksta*state.ta)
-            v_ir /= alpha
-
-            self._buf[idx] = v_ir
+            self.alpha[idx] = alpha
 
     def _calc_os_cp(self, subpage, state):
         pix_os_cp = self.calib.pix_os_cp[subpage.id]
