@@ -102,32 +102,37 @@ class CameraCalibration:
         )
         
         # IR gradient compensation
-        offset_cp_sp_0 = eeprom['offset_cp_sp_0']
-        offset_cp_sp_1 = offset_cp_sp_0 + eeprom['offset_cp_delta']
-        self.pix_os_cp = (offset_cp_sp_0, offset_cp_sp_1)
-
-        self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
-        self.kv_cp = eeprom['kv_cp'] / self.kv_scale
 
         # tgc only available for device type 'C'
-        self.tgc = eeprom['tgc'] / 32.0 if use_tgc else False
+        self.use_tgc = use_tgc
 
-        # interleaved pattern
-        self.il_chess_c1 = eeprom['il_chess_c1'] / 16.0
-        self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
-        self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
+        if use_tgc:
+            self.tgc = eeprom['tgc'] / 32.0 if use_tgc else False
 
-        self.il_offset = Array2D.from_iter('f', NUM_COLS, self._calc_il_offset())
+            offset_cp_sp_0 = eeprom['offset_cp_sp_0']
+            offset_cp_sp_1 = offset_cp_sp_0 + eeprom['offset_cp_delta']
+            self.pix_os_cp = (offset_cp_sp_0, offset_cp_sp_1)
+            
+            self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
+            self.kv_cp = eeprom['kv_cp'] / self.kv_scale
 
         # sensitivity normalization
         self.pix_alpha = Array2D.from_iter('f', NUM_COLS, self._calc_pix_alpha_ref(iface, eeprom))
         self.ksta = eeprom['ksta'] / 8192.0
 
-        alpha_scale_cp = 1 << (eeprom['alpha_scale'] + 27)
-        cp_sp_ratio = eeprom['cp_sp_ratio']
-        pix_alpha_cp_sp_0 = eeprom['alpha_cp_sp_0'] / alpha_scale_cp
-        pix_alpha_cp_sp_1 = pix_alpha_cp_sp_0*(1 + cp_sp_ratio/128.0)
-        self.pix_alpha_cp = (pix_alpha_cp_sp_0, pix_alpha_cp_sp_1)
+        if use_tgc:
+            alpha_scale_cp = 1 << (eeprom['alpha_scale'] + 27)
+            cp_sp_ratio = eeprom['cp_sp_ratio']
+            pix_alpha_cp_sp_0 = eeprom['alpha_cp_sp_0'] / alpha_scale_cp
+            pix_alpha_cp_sp_1 = pix_alpha_cp_sp_0*(1 + cp_sp_ratio/128.0)
+            self.pix_alpha_cp = (pix_alpha_cp_sp_0, pix_alpha_cp_sp_1)
+
+        # interleaved pattern
+        self.il_chess_c1 = eeprom['il_chess_c1'] / 16.0
+        self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
+        self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
+        self.il_offset = Array2D.from_iter('f', NUM_COLS, self._calc_il_offset())
+
 
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']

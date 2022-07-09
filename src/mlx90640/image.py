@@ -102,8 +102,9 @@ class ProcessedImage:
         self.pix = Array2D.filled('f', NUM_ROWS, NUM_COLS, 0)
 
     def update(self, pix_data, subpage, state):
-        pix_os_cp = self._calc_os_cp(subpage, state)
-        pix_alpha_cp = self.calib.pix_alpha_cp[subpage.id]
+        if self.calib.use_tgc:
+            pix_os_cp = self._calc_os_cp(subpage, state)
+            pix_alpha_cp = self.calib.pix_alpha_cp[subpage.id]
 
         for row, col, raw in pix_data:
             ## IR data compensation - offset, Vdd, and Ta
@@ -120,12 +121,12 @@ class ProcessedImage:
             v_ir = v_os / _EMISSIVITY
 
             ## IR data gradient compensation
-            if self.calib.tgc:
+            if self.calib.use_tgc:
                 v_ir -= self.calib.tgc*pix_os_cp
 
             ## sensitivity normalization
             alpha = self.calib.pix_alpha.get_coord(row, col)
-            if self.calib.tgc:
+            if self.calib.use_tgc:
                 alpha -= self.calib.tgc*pix_alpha_cp
             alpha *= (1 + self.calib.ksta*state.ta)
             v_ir /= alpha
