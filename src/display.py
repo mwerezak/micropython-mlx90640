@@ -4,9 +4,14 @@ from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY, PEN_P8, PEN_RGB332,
 DISPLAY = PicoGraphics(display=DISPLAY_PICO_DISPLAY, pen_type=PEN_RGB332)
 
 PEN_DEFAULT_BG = DISPLAY.create_pen(0, 0, 0)
+PEN_DEFAULT_FG = DISPLAY.create_pen(50, 168, 82)
+
 PEN_PIXMAP_0 = DISPLAY.create_pen(150, 200, 245)
 PEN_PIXMAP_1 = DISPLAY.create_pen(240, 240, 240)
 
+DISPLAY.set_font("bitmap8")
+DISPLAY.set_pen(PEN_DEFAULT_BG)
+DISPLAY.clear()
 
 Rect = namedtuple('Rect', ('x', 'y', 'width', 'height'))
 
@@ -36,6 +41,20 @@ class Gradient:
         v = int(round(self._lerp(h, self.h_scale, (0, 255))))
         return DISPLAY.create_pen(v, v, v)
 
+class TextBox:
+    def __init__(self, rect, text, *, fg=PEN_DEFAULT_FG, bg=PEN_DEFAULT_BG, **kwargs):
+        self.rect = rect
+        self.text = text
+        self.fg = fg
+        self.bg = bg
+        self.kwargs = kwargs
+
+    def draw(self, display):
+        display.set_pen(self.bg)
+        display.rectangle(*self.rect)
+
+        display.set_pen(self.fg)
+        display.text(self.text, self.rect.x, self.rect.y, wordwrap=self.rect.width, **self.kwargs)
 
 class PixMap:
     def __init__(self, width, height, buf):
@@ -84,3 +103,25 @@ class PixMap:
                 y = int(round(self.draw_rect.y + j*self.draw_scale))
                 display.rectangle(x, y, square_size, square_size)
 
+    def draw_reticle(self, display, *, fg=PEN_DEFAULT_FG, scale=1):
+        display.set_pen(fg)
+        half_size = self.draw_scale * scale
+
+        center_x = self.draw_rect.width/2.0 + self.draw_rect.x
+        center_y = self.draw_rect.height/2.0 + self.draw_rect.y
+        display.line(
+            int(round(center_x - half_size)), int(round(center_y + half_size)),
+            int(round(center_x + half_size)), int(round(center_y + half_size)),
+        )
+        display.line(
+            int(round(center_x - half_size)), int(round(center_y - half_size)),
+            int(round(center_x + half_size)), int(round(center_y - half_size)),
+        )
+        display.line(
+            int(round(center_x - half_size)), int(round(center_y - half_size)),
+            int(round(center_x - half_size)), int(round(center_y + half_size)),
+        )
+        display.line(
+            int(round(center_x + half_size)), int(round(center_y - half_size)),
+            int(round(center_x + half_size)), int(round(center_y + half_size)),
+        )

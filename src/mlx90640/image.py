@@ -63,18 +63,19 @@ class Subpage:
 
 class RawImage:
     def __init__(self):
-        self._buf = array_filled('h', NUM_ROWS*NUM_COLS)
+        self.pix = array_filled('h', NUM_ROWS*NUM_COLS)
 
     def __getitem__(self, idx):
-        return self._buf[idx]
+        return self.pix[idx]
 
     def read(self, iface, update_idx = None):
         buf = bytearray(REG_SIZE)
         update_idx = update_idx or range(NUM_ROWS * NUM_COLS)
         for offset in update_idx:
             iface.read_into(PIX_DATA_ADDRESS + offset, buf)
-            self._buf[offset] = struct.unpack(PIX_STRUCT_FMT, buf)[0]
+            self.pix[offset] = struct.unpack(PIX_STRUCT_FMT, buf)[0]
 
+_K = const(273.15)
 
 class ProcessedImage:
     def __init__(self, calib):
@@ -132,3 +133,24 @@ class ProcessedImage:
             gain_cp_sp - pix_os_cp_sp*k
             for pix_os_cp_sp, gain_cp_sp in zip(pix_os_cp, state.gain_cp)
         ]
+
+    # tr - temperature of reflected environment
+    def calc_temperature(self, idx, state, *, tr = None):
+        v_ir = self.v_ir[idx]
+        alpha = self.alpha[idx]
+
+        ta = state.ta + 25
+        if self.calib.emissivity == 1:
+            t_ar = (ta + _K)**4
+        else:
+            tr = tr if tr is not None else ta - 8
+            t_ak4 = (ta + _K)**4
+            t_rk4 = (tr + _K)**4
+            t_ar = t_rk4 - (t_rk4 - t_ak4)/self.calib.emissivity
+
+        s_x = v_ir*(alpha**3) + t_ar*(alpha**4)
+        s_x = (s_x**0.25)*self.calib.ksto2
+
+        to = v_ir/(alpha*(1 - _K*self.calib.ksto2) + s_x) + t_ar
+        to = (to**0.25) - _K
+        return to

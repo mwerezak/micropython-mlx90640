@@ -53,7 +53,7 @@ class MLX90640:
         self.image = None
         self.last_read = None
 
-    def setup(self, calib=None, raw=None, image=None):
+    def setup(self, *, calib=None, raw=None, image=None):
         self.calib = calib or CameraCalibration(self.iface, self.eeprom)
         self.raw = raw or RawImage()
         self.image = image or ProcessedImage(self.calib)
@@ -135,7 +135,7 @@ class MLX90640:
         self.registers['data_available'] = 0
         return self.raw
 
-    def process_image(self, sp_id = None):
+    def process_image(self, sp_id = None, state = None):
         if self.last_read is None:
             raise DataNotAvailableError
 
@@ -143,9 +143,9 @@ class MLX90640:
         if sp_id is not None:
             subpage.id = sp_id
 
+        state = state or self.read_state()
+
         # print(f"process SP {subpage.id}")
-        raw_data = (
-            (idx, self.raw[idx]) for idx in subpage.sp_range()
-        )
-        self.image.update(raw_data, subpage, self.read_state())
+        raw_data = ((idx, self.raw[idx]) for idx in subpage.sp_range())
+        self.image.update(raw_data, subpage, state)
         return self.image

@@ -10,7 +10,7 @@ import mlx90640
 from mlx90640 import NUM_ROWS, NUM_COLS
 from mlx90640.image import ChessPattern, InterleavedPattern
 
-from display import DISPLAY, PEN_DEFAULT_BG, PixMap, Rect, Gradient
+from display import DISPLAY, PEN_DEFAULT_BG, PixMap, Rect, Gradient, TextBox
 
 class CameraLoop:
     def __init__(self):
@@ -23,6 +23,7 @@ class CameraLoop:
 
         self.update_event = Event()
         self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
+        self.temp_text = bytearray("-- °C")
 
     def set_refresh_rate(self, value):
         self.camera.refresh_rate = value
@@ -35,21 +36,28 @@ class CameraLoop:
         event_loop.run_forever()
 
     async def display_images(self):
-        DISPLAY.set_pen(PEN_DEFAULT_BG)
-        DISPLAY.clear()
+        gradient = Gradient()
 
         pixmap = PixMap(NUM_ROWS, NUM_COLS, self.image_buf)
         pixmap.update_rect(Rect(0, 0, *DISPLAY.get_bounds()))
         pixmap.draw_dummy(DISPLAY)
-        DISPLAY.update()
 
-        gradient = Gradient()
+        ui_bg = DISPLAY.create_pen(28, 55, 56)
+        temp_out = TextBox(Rect(0, 0, 65, 30), self.temp_text.decode(), bg=ui_bg, scale=3)
+        temp_out.draw(DISPLAY)
+
+        DISPLAY.update()
 
         while True:
             await self.update_event.wait()
             self.update_event.clear()
             gradient.h_scale = (min(self.image_buf), max(self.image_buf))
             pixmap.draw_map(DISPLAY, gradient)
+            pixmap.draw_reticle(DISPLAY)
+
+            temp_out.text = self.temp_text.decode()
+            temp_out.draw(DISPLAY)
+
             DISPLAY.update()
 
     async def wait_for_data(self):
@@ -67,11 +75,21 @@ class CameraLoop:
         while True:
             await self.wait_for_data()
             self.camera.read_image(sp)
-            im = self.camera.process_image(sp)
+            state = self.camera.read_state()
+            im = self.camera.process_image(sp, state)
             sp = int(not sp)
             
             for idx in range(len(self.image_buf)):
                 self.image_buf[idx] = im.v_ir[idx]/im.alpha[idx]
+
+            temp = 0
+            for row in (11, 12):
+                for col in (15,16):
+                    idx = row * 32 + col
+                    temp += im.calc_temperature(idx, state)
+            temp /= 4
+            self.temp_text[:2] = str(int(round(temp))).encode()[-2:]
+
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))

@@ -138,6 +138,9 @@ class CameraCalibration:
         self.ksto1 = eeprom['ksto_1'] / self.ksto_scale
         self.ksto2 = eeprom['ksto_2'] / self.ksto_scale
 
+        step = eeprom['step'] * 10
+        self.ct3 = eeprom['ct3'] * step
+        self.ct4 = eeprom['ct4'] * step + self.ct3
 
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']
