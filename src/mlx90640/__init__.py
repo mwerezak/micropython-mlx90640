@@ -131,7 +131,7 @@ class MLX90640:
         self.last_read = subpage
 
         # print(f"read SP {subpage.id}")
-        self.raw.read(self.iface, subpage.iter_sp_pix())
+        self.raw.read(self.iface, subpage.sp_range())
         self.registers['data_available'] = 0
         return self.raw
 
@@ -144,6 +144,8 @@ class MLX90640:
             subpage.id = sp_id
 
         # print(f"process SP {subpage.id}")
-        update_pix = self.raw.iter_subpage(subpage.iter_sp_pix())
-        self.image.update(update_pix, subpage, self.read_state())
+        raw_data = (
+            (idx, self.raw[idx]) for idx in subpage.sp_range()
+        )
+        self.image.update(raw_data, subpage, self.read_state())
         return self.image

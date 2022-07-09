@@ -14,6 +14,8 @@ from uctypes import (
     struct as uc_struct,
 )
 
+def array_filled(typecode, length, fill=0):
+    return array(typecode, (fill for i in range(length)))
 
 def twos_complement(bits, value):
     if value < 0:
@@ -67,52 +69,3 @@ class Struct:
         if signed is not None:
             value = twos_complement(signed, value)
         setattr(self._struct, name, value)
-
-class Array2D:
-    @classmethod
-    def filled(cls, typecode, num_strides, stride, fill=0):
-        # create a new Array2D with it's own buffer 
-        # filled with zeros or another value
-        fill_iter = (fill for i in range(num_strides * stride))
-        return cls.from_iter(typecode, stride, fill_iter)
-
-    @classmethod
-    def from_iter(cls, typecode, stride, iterable):
-        buf = array(typecode, iterable)
-        return cls(stride, buf)
-
-    def __init__(self, stride, buf):
-        self.stride = stride
-        self.array = buf
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}({repr(self.stride)}, {repr(self.array)})'
-    
-    # preserve array interface for efficient iteration
-    def __len__(self):
-        return len(self.array)
-    def __iter__(self):
-        return iter(self.array)
-    def __getitem__(self, idx):
-        return self.array[idx]
-    def __setitem__(self, idx, value):
-        self.array[idx] = value
-
-    def get_coord(self, i, j):
-        return self.array[i * self.stride + j]
-    def set_coord(self, i, j, value):
-        self.array[i * self.stride + j] = value
-
-    def iter_indexed(self):
-        num_strides = len(self.array)//self.stride + 1
-        indices = self.range(num_strides, self.stride)
-        for pair, value in zip(indices, self.array):
-            yield pair[0], pair[1], value
-
-    # very useful for generating the init sequence
-    @classmethod
-    def range(cls, num_strides, stride):
-        # yields i,j pairs for an Array2D with the given shape
-        for i in range(num_strides):
-            for j in range(stride):
-                yield i, j

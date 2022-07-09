@@ -1,8 +1,8 @@
+from array import array
 from utils import (
     Struct, 
     StructProto,
     field_desc,
-    Array2D,
 )
 from mlx90640.regmap import REG_SIZE
 
@@ -61,9 +61,7 @@ class PixelCalibrationData:
             offset = idx * REG_SIZE
             iface.read_into(PIX_CALIB_ADDRESS + offset, self._data[offset:offset+REG_SIZE])
 
-    def get_data(self, row, col):
-        # type: (row, col) -> Struct
-        idx = row * NUM_COLS + col
+    def __getitem__(self, idx):
         offset = idx * REG_SIZE
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
 
@@ -87,12 +85,12 @@ class CameraCalibration:
 
         # pixel calibration data
         self.pix_data = PixelCalibrationData(iface)
-        self.pix_os_ref = Array2D.from_iter('h', NUM_COLS, self._calc_pix_os_ref(iface, eeprom))
+        self.pix_os_ref = array('h', self._calc_pix_os_ref(iface, eeprom))
 
         # IR data compensation
         self.kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
         self.kta_scale_2 = 1 << eeprom['kta_scale_2']
-        self.pix_kta = Array2D.from_iter('f', NUM_COLS, self._calc_pix_kta(eeprom))
+        self.pix_kta = array('f', self._calc_pix_kta(eeprom))
 
         self.kv_scale = 1 << eeprom['kv_scale']
         self.kv_avg = (
@@ -112,12 +110,12 @@ class CameraCalibration:
             offset_cp_sp_0 = eeprom['offset_cp_sp_0']
             offset_cp_sp_1 = offset_cp_sp_0 + eeprom['offset_cp_delta']
             self.pix_os_cp = (offset_cp_sp_0, offset_cp_sp_1)
-            
+
             self.kta_cp = eeprom['kta_cp'] / self.kta_scale_1
             self.kv_cp = eeprom['kv_cp'] / self.kv_scale
 
         # sensitivity normalization
-        self.pix_alpha = Array2D.from_iter('f', NUM_COLS, self._calc_pix_alpha_ref(iface, eeprom))
+        self.pix_alpha = array('f', self._calc_pix_alpha_ref(iface, eeprom))
         self.ksta = eeprom['ksta'] / 8192.0
 
         if use_tgc:
@@ -131,7 +129,7 @@ class CameraCalibration:
         self.il_chess_c1 = eeprom['il_chess_c1'] / 16.0
         self.il_chess_c2 = eeprom['il_chess_c2'] / 2.0
         self.il_chess_c3 = eeprom['il_chess_c3'] / 8.0
-        self.il_offset = Array2D.from_iter('f', NUM_COLS, self._calc_il_offset())
+        self.il_offset = array('f', self._calc_il_offset())
 
 
     def _calc_pix_os_ref(self, iface, eeprom):
@@ -143,13 +141,15 @@ class CameraCalibration:
         occ_rows = tuple(read_occ_rows(iface))
         occ_cols = tuple(read_occ_cols(iface))
 
-        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
-            yield (
-                offset_avg
-                + occ_rows[row] * occ_scale_row
-                + occ_cols[col] * occ_scale_col
-                + self.pix_data.get_data(row, col)['offset'] * occ_scale_rem
-            )
+        for row in range(NUM_ROWS):
+            for col in range(NUM_COLS):
+                idx = row * NUM_COLS + col
+                yield (
+                    offset_avg
+                    + occ_rows[row] * occ_scale_row
+                    + occ_cols[col] * occ_scale_col
+                    + self.pix_data[idx]['offset'] * occ_scale_rem
+                )
 
     def _calc_pix_alpha_ref(self, iface, eeprom):
         alpha_ref = eeprom['pix_sensitivity_average']
@@ -161,13 +161,15 @@ class CameraCalibration:
         acc_rows = tuple(read_acc_rows(iface))
         acc_cols = tuple(read_acc_cols(iface))
 
-        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
-            yield (
-                alpha_ref
-                + acc_rows[row] * acc_scale_row
-                + acc_cols[col] * acc_scale_col
-                + self.pix_data.get_data(row, col)['alpha'] * acc_scale_rem
-            ) / alpha_scale
+        for row in range(NUM_ROWS):
+            for col in range(NUM_COLS):
+                idx = row * NUM_COLS + col
+                yield (
+                    alpha_ref
+                    + acc_rows[row] * acc_scale_row
+                    + acc_cols[col] * acc_scale_col
+                    + self.pix_data[idx]['alpha'] * acc_scale_rem
+                ) / alpha_scale
 
     def _calc_pix_kta(self, eeprom):
         # index by [row % 2][col % 2]
@@ -176,10 +178,12 @@ class CameraCalibration:
             (eeprom['kta_avg_ro_ce'], eeprom['kta_avg_ro_co']),
         )
 
-        for row, col in Array2D.range(NUM_ROWS, NUM_COLS):
-            kta_ee = self.pix_data.get_data(row, col)['kta']
-            kta_rc = kta_avg[row % 2][col % 2]
-            yield (kta_rc + kta_ee * self.kta_scale_2)/self.kta_scale_1
+        for row in range(NUM_ROWS):
+            for col in range(NUM_COLS):
+                idx = row * NUM_COLS + col
+                kta_ee = self.pix_data[idx]['kta']
+                kta_rc = kta_avg[row % 2][col % 2]
+                yield (kta_rc + kta_ee * self.kta_scale_2)/self.kta_scale_1
 
     def _calc_il_offset(self):
         for idx in range(NUM_ROWS*NUM_COLS):

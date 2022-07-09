@@ -1,8 +1,9 @@
 import math
 import uasyncio
 from uasyncio import Event, Lock
+from array import array
 
-from utils import Array2D
+from utils import array_filled
 from pinmap import I2C_CAMERA
 
 import mlx90640
@@ -21,7 +22,7 @@ class CameraLoop:
         self.set_refresh_rate(8)
 
         self.update_event = Event()
-        self.image_buf = Array2D.filled('f', NUM_ROWS, NUM_COLS)
+        self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
 
     def set_refresh_rate(self, value):
         self.camera.refresh_rate = value
@@ -69,7 +70,7 @@ class CameraLoop:
             im = self.camera.process_image(sp)
             sp = int(not sp)
             
-            self.image_buf[:] = im.pix.array
+            self.image_buf[:] = im[:]
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))

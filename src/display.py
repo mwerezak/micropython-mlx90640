@@ -45,7 +45,7 @@ class PixMap:
         if len(buf) != width * height:
             raise ValueError(f"invalid buffer size for {width}x{height} PixMap: {len(buf)}")
 
-        self.buf = buf  # an Array2D with data
+        self.buf = buf
         self.draw_scale = 0 # size of element in pixels
         self.draw_rect = Rect(0, 0, 0, 0)
 
@@ -73,9 +73,14 @@ class PixMap:
 
     def draw_map(self, display, gradient):
         square_size = int(round(self.draw_scale))
-        for i, j, value in self.buf.iter_indexed():
-            display.set_pen(gradient.get_color(value))
-            x = int(round(self.draw_rect.x + i*self.draw_scale))
-            y = int(round(self.draw_rect.y + j*self.draw_scale))
-            display.rectangle(x, y, square_size, square_size)
+        idx = 0
+        for i in range(self.width):
+            for j in range(self.height):
+                value = self.buf[idx]
+                idx += 1
+                
+                display.set_pen(gradient.get_color(value))
+                x = int(round(self.draw_rect.x + i*self.draw_scale))
+                y = int(round(self.draw_rect.y + j*self.draw_scale))
+                display.rectangle(x, y, square_size, square_size)
 
