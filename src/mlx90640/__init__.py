@@ -16,7 +16,8 @@ def detect_camera(i2c):
     if len(scan) == 0:
         raise CameraDetectError("no camera detected")
     if len(scan) > 1:
-        raise CameraDetectError("multiple devices detected on I2C interface")
+        scan = ", ".join(str(s) for s in scan)
+        raise CameraDetectError(f"multiple devices detected on I2C interface: {scan}")
     cam_addr = scan[0]
     return MLX90640(i2c, cam_addr)
 
