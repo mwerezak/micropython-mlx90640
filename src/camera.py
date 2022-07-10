@@ -11,10 +11,9 @@ from pinmap import I2C_CAMERA
 import mlx90640
 from mlx90640 import NUM_ROWS, NUM_COLS, TEMP_K
 from mlx90640.image import ChessPattern, InterleavedPattern
+
+from config import Config
 from display import DISPLAY, Rect, PixMap, TextBox
-
-from display.gradient import WhiteHot, BlackHot, Ironbow
-
 from display.palette import (
     COLOR_DEFAULT_BG,
     COLOR_UI_BG,
@@ -34,20 +33,27 @@ class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
         self.camera.set_pattern(ChessPattern)
-        # self.camera.set_pattern(InterleavedPattern)
-        self.set_refresh_rate(4)
-        self.bad_pix = tuple(range(480, 480+16)) #HACK
 
         self.update_event = Event()
         self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
-        
-        self.gradient = Ironbow()
-
         self.state = None
         self.image = None
 
-        # dynamic scale config
-        self.min_range = 8
+        self.default = Config()
+        try:
+            config = Config()
+            config.load('config.json')
+            self.reload_config(config)
+        except Exception as err:
+            print(f"failed to load config: {err}")
+            self.reload_config(self.default)
+
+    def reload_config(self, config):
+        self.set_refresh_rate(config.refresh_rate)
+        self.gradient = config.gradient()
+        self.bad_pix = config.bad_pixels
+        self.min_range = config.min_scale
+        self.debug = config.debug
 
     def set_refresh_rate(self, value):
         self.camera.refresh_rate = value
@@ -57,7 +63,9 @@ class CameraLoop:
         event_loop = uasyncio.get_event_loop()
         event_loop.create_task(self.display_images())
         event_loop.create_task(self.stream_images())
-        event_loop.create_task(self.print_mem_usage())
+        if self.debug:
+            event_loop.create_task(self.print_mem_usage())
+        
         try:
             event_loop.run_forever()
         except:
