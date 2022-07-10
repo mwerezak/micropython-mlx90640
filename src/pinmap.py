@@ -13,7 +13,7 @@ UART_WLAN = UART(1)
 # PWM_BACKLIGHT = PWM(Pin(20, Pin.OUT))
 Pin(20, Pin.IN)
 
-PIN_I2C_SDA = Pin(6, Pin.IN, Pin.PULL_UP)
-PIN_I2C_SCL = Pin(7, Pin.IN, Pin.PULL_UP)
+PIN_I2C_SDA = Pin(10, Pin.IN, Pin.PULL_UP)
+PIN_I2C_SCL = Pin(11, Pin.IN, Pin.PULL_UP)
 
 I2C_CAMERA = I2C(id=1, scl=PIN_I2C_SCL, sda=PIN_I2C_SDA)

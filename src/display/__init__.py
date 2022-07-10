@@ -1,48 +1,23 @@
 from ucollections import namedtuple
-from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY, PEN_P8, PEN_RGB332, PEN_RGB565
 
-DISPLAY = PicoGraphics(display=DISPLAY_PICO_DISPLAY, pen_type=PEN_RGB332)
+from display.driver import DISPLAY
 
-PEN_DEFAULT_BG = DISPLAY.create_pen(0, 0, 0)
-PEN_DEFAULT_FG = DISPLAY.create_pen(50, 168, 82)
+from display.palette import (
+    COLOR_DEFAULT_BG,
+    COLOR_DEFAULT_FG,
+    COLOR_PIXMAP_0,
+    COLOR_PIXMAP_1,
+)
 
-PEN_PIXMAP_0 = DISPLAY.create_pen(150, 200, 245)
-PEN_PIXMAP_1 = DISPLAY.create_pen(240, 240, 240)
 
 DISPLAY.set_font("bitmap8")
-DISPLAY.set_pen(PEN_DEFAULT_BG)
+DISPLAY.set_pen(COLOR_DEFAULT_BG)
 DISPLAY.clear()
 
 Rect = namedtuple('Rect', ('x', 'y', 'width', 'height'))
 
-# linear interpolation helper
-class Lerp:
-    def __init__(self, in_scale, out_scale):
-        in_min, in_max = in_scale
-        out_min, out_max = out_scale
-        self._slope = (out_max - out_min)/(in_max - in_min)
-        self._in0 = in_min
-        self._out0 = out_min
-
-    def __call__(self, x):
-        return (x - self._out0)*self._slope + self._out0
-
-# simple value-scale
-class Gradient:
-    def __init__(self, h_scale=(0, 1)):
-        self.h_scale = h_scale
-
-    @staticmethod
-    def _lerp(x, in_scale, out_scale):
-        m = (out_scale[1] - out_scale[0])/(in_scale[1] - in_scale[0])
-        return (x - in_scale[0])*m + out_scale[0]
-
-    def get_color(self, h):
-        v = int(round(self._lerp(h, self.h_scale, (0, 255))))
-        return DISPLAY.create_pen(v, v, v)
-
 class TextBox:
-    def __init__(self, rect, text, *, fg=PEN_DEFAULT_FG, bg=PEN_DEFAULT_BG, **kwargs):
+    def __init__(self, rect, text, *, fg=COLOR_DEFAULT_FG, bg=COLOR_DEFAULT_BG, **kwargs):
         self.rect = rect
         self.text = text
         self.fg = fg
@@ -79,7 +54,7 @@ class PixMap:
         self.draw_rect = Rect(origin_x, origin_y, draw_width, draw_height)
 
     def draw_dummy(self, display):
-        dummy_colors = (PEN_PIXMAP_0, PEN_PIXMAP_1)
+        dummy_colors = (COLOR_PIXMAP_0, COLOR_PIXMAP_1)
         square_size = int(round(self.draw_scale))
         for j in range(self.height):
             for i in range(self.width):
@@ -103,7 +78,7 @@ class PixMap:
                 y = int(round(self.draw_rect.y + j*self.draw_scale))
                 display.rectangle(x, y, square_size, square_size)
 
-    def draw_reticle(self, display, *, fg=PEN_DEFAULT_FG, scale=1):
+    def draw_reticle(self, display, *, fg=COLOR_DEFAULT_FG, scale=1):
         display.set_pen(fg)
         half_size = self.draw_scale * scale
 
