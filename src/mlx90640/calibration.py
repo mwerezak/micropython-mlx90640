@@ -57,13 +57,26 @@ class PixelCalibrationData:
     def __init__(self, iface):
         pix_count = NUM_ROWS * NUM_COLS
         self._data = bytearray(pix_count * REG_SIZE)
+
+        failed = []
+        buf = bytearray(REG_SIZE)
         for idx in range(pix_count):
             offset = idx * REG_SIZE
-            iface.read_into(PIX_CALIB_ADDRESS + offset, self._data[offset:offset+REG_SIZE])
+            iface.read_into(PIX_CALIB_ADDRESS + offset, buf)
+            if buf != bytes(REG_SIZE):
+                self._data[offset:offset+REG_SIZE] = buf
+            else:
+                failed.append(idx)
+        self.failed = tuple(failed)
 
+    def __len__(self):
+        return len(self._data)//REG_SIZE
     def __getitem__(self, idx):
         offset = idx * REG_SIZE
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
+    def __iter__(self):
+        for idx in range(len(self)):
+            yield self[idx]
 
 TEMP_K = const(273.15)
 
@@ -90,6 +103,7 @@ class CameraCalibration:
         # pixel calibration data
         self.pix_data = PixelCalibrationData(iface)
         self.pix_os_ref = array('h', self._calc_pix_os_ref(iface, eeprom))
+        self.outliers = tuple(idx for idx, data in enumerate(self.pix_data) if data['outlier'])
 
         # IR data compensation
         self.kta_scale_1 = 1 << (eeprom['kta_scale_1'] + 8)
