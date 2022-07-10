@@ -117,15 +117,10 @@ class ProcessedImage:
             if self.calib.use_tgc:
                 v_ir -= self.calib.tgc*pix_os_cp
 
-            ## sensitivity normalization
-            alpha = self.calib.pix_alpha[idx]
-            if self.calib.use_tgc:
-                alpha -= self.calib.tgc*pix_alpha_cp
-            alpha *= (1 + self.calib.ksta*state.ta)
-
-            # preserve v_ir and alpha for temperature calculations
+            # preserve v_ir for temperature calculations
             self.v_ir[idx] = v_ir
-            self.alpha[idx] = alpha
+
+            alpha = self._calc_alpha(idx, state.ta)
             self.buf[idx] = v_ir/alpha
 
     def _calc_os_cp(self, subpage, state):
@@ -146,20 +141,31 @@ class ProcessedImage:
             for pix_os_cp_sp, gain_cp_sp in zip(pix_os_cp, state.gain_cp)
         ]
 
-    def calc_temperature(self, idx, state):
-        v_ir = self.v_ir[idx]
-        alpha = self.alpha[idx]
+    def _calc_alpha(self, idx, ta):
+        alpha = self.calib.pix_alpha[idx]
+        if self.calib.use_tgc:
+            alpha -= self.calib.tgc*pix_alpha_cp
+        alpha *= (1 + self.calib.ksta*ta)
+        return alpha
 
-        s_x = v_ir*(alpha**3) + state.ta_r*(alpha**4)
+    def _calc_to(self, idx, alpha, ta_r):
+        v_ir = self.v_ir[idx]
+
+        s_x = v_ir*(alpha**3) + ta_r*(alpha**4)
         s_x = (s_x**0.25)*self.calib.ksto[1]
 
-        to = v_ir/(alpha*(1 - TEMP_K*self.calib.ksto[1]) + s_x) + state.ta_r
+        to = v_ir/(alpha*(1 - TEMP_K*self.calib.ksto[1]) + s_x) + ta_r
         to = (to**0.25) - TEMP_K
         return to + self.calib.drift
 
-    def calc_temperature_ext(self, idx, state, to):
+    def calc_temperature(self, idx, state):
+        alpha = self._calc_alpha(idx, state.ta)
+        return self._calc_to(idx, alpha, state.ta_r)
+
+    def calc_temperature_ext(self, idx, state):
         v_ir = self.v_ir[idx]
-        alpha = self.alpha[idx]
+        alpha = self._calc_alpha(idx, state.ta)
+        to = self._calc_to(idx, alpha, state.ta_r)
 
         band = self._get_range_band(to)
         if band < 0:

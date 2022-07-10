@@ -14,6 +14,7 @@ from mlx90640.image import ChessPattern, InterleavedPattern
 
 from config import Config
 from display import DISPLAY, Rect, PixMap, TextBox
+from display.gradient import WhiteHot
 from display.palette import (
     COLOR_DEFAULT_BG,
     COLOR_UI_BG,
@@ -69,6 +70,11 @@ class CameraLoop:
         pixmap.update_rect(Rect(0, 0, *display_size))
         pixmap.draw_dummy(DISPLAY)
 
+        for idx in self.bad_pix:
+            row, col = divmod(idx, NUM_COLS)
+            DISPLAY.set_pen(COLOR_RETICLE)
+            DISPLAY.rectangle(*pixmap.get_elem_rect(row, col))
+
         ui_height = int(round(pixmap.draw_rect.y))
         text_reticle = TextBox(
             Rect(0, 5, 80, ui_height - 10),
@@ -105,8 +111,6 @@ class CameraLoop:
 
         DISPLAY.update()
 
-        buf_size = IMAGE_SIZE
-
         while True:
             await self.update_event.wait()
             self.update_event.clear()
@@ -128,7 +132,7 @@ class CameraLoop:
                 boost = ((scale_temp + TEMP_K)/(max_temp + TEMP_K))**4
                 scale_h *= boost
 
-            # draw thermal image
+            # draw pixel map
             self.gradient.h_scale = (limits.min_h, scale_h)
             pixmap.draw_map(DISPLAY, self.gradient)
             pixmap.draw_reticle(DISPLAY, fg=COLOR_RETICLE)
@@ -159,8 +163,7 @@ class CameraLoop:
         return self.image.calc_temperature(idx, self.state)
 
     def _calc_temp_ext(self, idx):
-        to = self.image.calc_temperature(idx, self.state)
-        return self.image.calc_temperature_ext(idx, self.state, to)
+        return self.image.calc_temperature_ext(idx, self.state)
 
     def calc_reticle_temperature(self):
         reticle = (367, 368, 399, 400)

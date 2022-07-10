@@ -67,14 +67,10 @@ class PixMap:
                 y = int(round(self.draw_rect.y + j*self.draw_scale))
                 display.rectangle(x, y, square_size, square_size)
 
-    def get_elem(self, i, j):
+    def get_elem_rect(self, i, j):
         x = int(round(self.draw_rect.x + i*self.draw_scale))
         y = int(round(self.draw_rect.y + j*self.draw_scale))
         return Rect(x, y, self.square_size, self.square_size)
-
-    def get_elem_idx(self, idx):
-        i, j = divmod(idx, self.height)
-        return self.get_elem(i, j)
 
     def draw_map(self, display, gradient):
         idx = 0
@@ -84,7 +80,7 @@ class PixMap:
                 idx += 1
                 
                 display.set_pen(gradient.get_color(value))
-                display.rectangle(*self.get_elem(i, j))
+                display.rectangle(*self.get_elem_rect(i, j))
 
     def draw_reticle(self, display, *, fg=COLOR_DEFAULT_FG, scale=1):
         display.set_pen(fg)

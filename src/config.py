@@ -12,7 +12,7 @@ class Config:
     def __init__(self):
         self.refresh_rate = 4
         self.bad_pixels = ()
-        self.gradient = WhiteHot
+        self.gradient = Ironbow
         self.min_scale = 8
         self.debug = False
 
@@ -25,12 +25,8 @@ class Config:
         if 'bad_pixels' in cfg_data:
             self.bad_pixels = tuple(int(idx) for idx in cfg_data['bad_pixels'])
         if 'gradient' in cfg_data:
-            self.gradient = self.get_palette(cfg_data['gradient'], self.gradient)
+            self.gradient = _THERM_PALETTE.get(cfg_data['gradient'], self.gradient)
         if 'min_scale' in cfg_data:
             self.min_scale = int(cfg_data['min_scale'])
         if 'debug' in cfg_data:
             self.debug = bool(cfg_data['debug'])
-
-    @staticmethod
-    def get_palette(name, default=Ironbow):
-        return _THERM_PALETTE.get(name, default)
