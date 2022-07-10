@@ -11,7 +11,9 @@ import mlx90640
 from mlx90640 import NUM_ROWS, NUM_COLS
 from mlx90640.image import ChessPattern, InterleavedPattern
 from display import DISPLAY, Rect, PixMap, TextBox
-from display.gradient import WhiteHot
+
+from display.gradient import WhiteHot, BlackHot, Ironbow
+
 from display.palette import (
     COLOR_UI_BG,
     COLOR_RETICLE,
@@ -29,7 +31,7 @@ class CameraLoop:
         self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
         
         self.temp_text = " -- °C"
-        self.gradient = WhiteHot()
+        self.gradient = Ironbow()
 
         self.state = None
         self.image = None
