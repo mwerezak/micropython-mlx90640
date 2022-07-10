@@ -10,18 +10,18 @@ from display.palette import (
 )
 
 
-DISPLAY.set_font("bitmap8")
 DISPLAY.set_pen(COLOR_DEFAULT_BG)
 DISPLAY.clear()
 
 Rect = namedtuple('Rect', ('x', 'y', 'width', 'height'))
 
 class TextBox:
-    def __init__(self, rect, text, *, fg=COLOR_DEFAULT_FG, bg=COLOR_DEFAULT_BG, **kwargs):
+    def __init__(self, rect, text, *, fg=COLOR_DEFAULT_FG, bg=COLOR_DEFAULT_BG, font='bitmap6', **kwargs):
         self.rect = rect
         self.text = text
         self.fg = fg
         self.bg = bg
+        self.font = font
         self.kwargs = kwargs
 
     def draw(self, display):
@@ -29,6 +29,7 @@ class TextBox:
         display.rectangle(*self.rect)
 
         display.set_pen(self.fg)
+        display.set_font(self.font)
         display.text(self.text, self.rect.x, self.rect.y, wordwrap=self.rect.width, **self.kwargs)
 
 class PixMap:

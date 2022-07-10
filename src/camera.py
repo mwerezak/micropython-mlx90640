@@ -30,7 +30,6 @@ class CameraLoop:
         self.update_event = Event()
         self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
         
-        self.temp_text = " -- °C"
         self.gradient = Ironbow()
 
         self.state = None
@@ -44,35 +43,84 @@ class CameraLoop:
         event_loop = uasyncio.get_event_loop()
         event_loop.create_task(self.display_images())
         event_loop.create_task(self.stream_images())
-        event_loop.create_task(self.print_mem_usage())
+        # event_loop.create_task(self.print_mem_usage())
         event_loop.run_forever()
 
     async def display_images(self):
+        display_size = DISPLAY.get_bounds()
+
         pixmap = PixMap(NUM_ROWS, NUM_COLS, self.image_buf)
-        pixmap.update_rect(Rect(0, 0, *DISPLAY.get_bounds()))
+        pixmap.update_rect(Rect(0, 0, *display_size))
         pixmap.draw_dummy(DISPLAY)
 
-        temp_ret = TextBox(
-            Rect(0, 0, 80, int(round(pixmap.draw_rect.y))),
-            self.temp_text,
-            bg = COLOR_UI_BG,
-            scale = 3,
+        ui_height = int(round(pixmap.draw_rect.y))
+        text_temp_ret = TextBox(
+            Rect(0, 5, 60, ui_height - 10),
+            "---°C",
+            bg = COLOR_UI_BG, 
+            scale = 2,
         )
-        temp_ret.draw(DISPLAY)
+        text_temp_ret.draw(DISPLAY)
+
+        y = int(round(pixmap.draw_rect.y + pixmap.draw_rect.height)) 
+        ui_height = display_size[1] - y
+        text_temp_min = TextBox(
+            Rect(0, y + 5, 60, ui_height - 10),
+            "---°C",
+            scale = 2,
+        )
+        text_temp_min.draw(DISPLAY)
+
+        text_temp_max = TextBox(
+            Rect(80, y + 5, 60, ui_height - 10),
+            "---°C",
+            scale = 2,
+        )
+        text_temp_max.draw(DISPLAY)
 
         DISPLAY.update()
+
+        # use 5/95th percentile to filter outliers
+        threshold = 0.05
+        p_low  = int(threshold*NUM_ROWS*NUM_COLS)
+        p_high = int((1-threshold)*NUM_ROWS*NUM_COLS)
 
         while True:
             await self.update_event.wait()
             self.update_event.clear()
-            self.gradient.h_scale = (min(self.image_buf), max(self.image_buf))
+
+            # update max/min
+            sorted_temp = sorted(zip(self.image_buf, range(NUM_ROWS*NUM_COLS)))
+            min_h, min_idx = sorted_temp[p_low]
+            max_h, max_idx = sorted_temp[p_high]
+
+            self.gradient.h_scale = (min_h, max_h)
             pixmap.draw_map(DISPLAY, self.gradient)
             pixmap.draw_reticle(DISPLAY, fg=COLOR_RETICLE)
 
-            temp_ret.text = self.temp_text
-            temp_ret.draw(DISPLAY)
+            # update reticle
+            reticle_temp = self.calc_reticle_temperature()
+            text_temp_ret.text = f"{reticle_temp: 2.0f}°C"
+            text_temp_ret.draw(DISPLAY)
+            
+            # update temp scale min/max
+            temp_min = self.image.calc_temperature(min_idx, self.state)
+            text_temp_min.text = f"{temp_min: 2.0f}°C"
+            text_temp_min.draw(DISPLAY)
+
+            temp_max = self.image.calc_temperature(max_idx, self.state)
+            text_temp_max.text = f"{temp_max: 2.0f}°C"
+            text_temp_max.draw(DISPLAY)
 
             DISPLAY.update()
+
+    def calc_reticle_temperature(self):
+        reticle = (367, 368, 399, 400)
+        temp = sum(
+            self.image.calc_temperature(idx, self.state)
+            for idx in reticle
+        )
+        return temp/4
 
     async def wait_for_data(self):
         await uasyncio.wait_for_ms(self._wait_inner(), int(self._refresh_period))
@@ -93,17 +141,8 @@ class CameraLoop:
             self.image = self.camera.process_image(sp, self.state)
             sp = int(not sp)
             
-            for idx in range(len(self.image_buf)):
+            for idx in range(NUM_ROWS*NUM_COLS):
                 self.image_buf[idx] = self.image.v_ir[idx]/self.image.alpha[idx]
-
-            temp = 0
-            for row in (11, 12):
-                for col in (15,16):
-                    idx = row * 32 + col
-                    temp += self.image.calc_temperature(idx, self.state)
-            temp /= 4
-            self.temp_text = f"{temp: 2.0f} °C"
-
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))

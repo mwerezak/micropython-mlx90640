@@ -12,14 +12,16 @@ from display.driver import DISPLAY
 # linear interpolation helper
 class Lerp:
     def __init__(self, in_scale, out_scale):
-        in_min, in_max = in_scale
+        in_min, in_max = sorted(in_scale)
         out_min, out_max = out_scale
-        self._slope = (out_max - out_min)/(in_max - in_min)
+        self._scale = in_max - in_min
+        self._slope = (out_max - out_min)/self._scale
         self._in0 = in_min
         self._out0 = out_min
 
     def __call__(self, x):
-        return (x - self._in0)*self._slope + self._out0
+        x = max(0, min(x - self._in0, self._scale))
+        return x*self._slope + self._out0
 
 
 class WhiteHot:
