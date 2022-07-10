@@ -5,7 +5,7 @@ from mlx90640.regmap import (
     RegisterMap,
     CameraInterface,
 )
-from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS, TEMP_K
+from mlx90640.calibration import CameraCalibration, TEMP_K
 from mlx90640.image import RawImage, ProcessedImage, Subpage, get_pattern_by_id
 
 class CameraDetectError(Exception): pass
@@ -42,9 +42,6 @@ CameraState = namedtuple('CameraState', ('vdd', 'ta', 'ta_r', 'gain', 'gain_cp')
 class DataNotAvailableError(Exception): pass
 
 class MLX90640:
-    NUM_ROWS = NUM_ROWS
-    NUM_COLS = NUM_COLS
-
     def __init__(self, i2c, addr):
         self.iface = CameraInterface(i2c, addr)
         self.registers = RegisterMap(self.iface, REGISTER_MAP)

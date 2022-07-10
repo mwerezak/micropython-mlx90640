@@ -9,7 +9,7 @@ from utils import array_filled
 from pinmap import I2C_CAMERA
 
 import mlx90640
-from mlx90640 import NUM_ROWS, NUM_COLS, TEMP_K
+from mlx90640.calibration import NUM_ROWS, NUM_COLS, IMAGE_SIZE, TEMP_K
 from mlx90640.image import ChessPattern, InterleavedPattern
 
 from config import Config
@@ -20,22 +20,12 @@ from display.palette import (
     COLOR_RETICLE,
 )
 
-ScaleLimits = namedtuple('ScaleLimits', ('min_h', 'max_h', 'min_idx', 'max_idx'))
-
-_IDX_NEIGHBOURS = tuple(
-    row * NUM_COLS + col
-    for row in (-1, 0, 1)
-    for col in (-1, 0, 1)
-    if row != 0 or col != 0
-)
-
 class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
         self.camera.set_pattern(ChessPattern)
 
         self.update_event = Event()
-        self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
         self.state = None
         self.image = None
 
@@ -59,23 +49,23 @@ class CameraLoop:
         self.camera.refresh_rate = value
         self._refresh_period = math.ceil(1000/self.camera.refresh_rate)
 
-    def run(self):
-        event_loop = uasyncio.get_event_loop()
-        event_loop.create_task(self.display_images())
-        event_loop.create_task(self.stream_images())
+    async def run(self):
+        await uasyncio.sleep_ms(80 + 2 * int(self._refresh_period))
+        self.camera.setup()
+        self.image = self.camera.image
+
+        tasks = [
+            self.display_images(),
+            self.stream_images(),
+        ]
         if self.debug:
-            event_loop.create_task(self.print_mem_usage())
-        
-        try:
-            event_loop.run_forever()
-        except:
-            DISPLAY.set_pen(COLOR_DEFAULT_BG)
-            DISPLAY.clear()
+            tasks.append(self.print_mem_usage())
+        await uasyncio.gather(*tasks)
 
     async def display_images(self):
         display_size = DISPLAY.get_bounds()
 
-        pixmap = PixMap(NUM_ROWS, NUM_COLS, self.image_buf)
+        pixmap = PixMap(NUM_ROWS, NUM_COLS, self.image.buf)
         pixmap.update_rect(Rect(0, 0, *display_size))
         pixmap.draw_dummy(DISPLAY)
 
@@ -115,14 +105,14 @@ class CameraLoop:
 
         DISPLAY.update()
 
-        buf_size = NUM_ROWS*NUM_COLS
+        buf_size = IMAGE_SIZE
 
         while True:
             await self.update_event.wait()
             self.update_event.clear()
 
             # update max/min
-            limits = self._calc_limits(self.image_buf, exclude_idx=self.bad_pix)
+            limits = self.image.calc_limits(exclude_idx=self.bad_pix)
 
             # update temp scale min/max
             min_temp = self._calc_temp(limits.min_idx)
@@ -172,34 +162,6 @@ class CameraLoop:
         to = self.image.calc_temperature(idx, self.state)
         return self.image.calc_temperature_ext(idx, self.state, to)
 
-    @staticmethod
-    def _calc_limits(image_buf, *, exclude_idx=()):
-        # find min/max in place to keep mem usage down
-        min_h, min_idx = None, None
-        max_h, max_idx = None, None
-        for idx, h in enumerate(image_buf):
-            if idx in exclude_idx:
-                continue
-            if min_h is None or h < min_h:
-                min_h, min_idx = h, idx
-            if max_h is None or h > max_h:
-                max_h, max_idx = h, idx
-        return ScaleLimits(min_h, max_h, min_idx, max_idx)
-
-    @staticmethod
-    def _interpolate_bad_pixels(image_buf, bad_pix):
-        buf_size = len(image_buf)
-        for bad_idx in bad_pix:
-            count = 0
-            total = 0
-            for offset in _IDX_NEIGHBOURS:
-                idx = bad_idx + offset
-                if idx in range(buf_size) and idx not in bad_pix:
-                    count += 1
-                    total += image_buf[idx]
-            if count > 0:
-                image_buf[bad_idx] = total/count
-
     def calc_reticle_temperature(self):
         reticle = (367, 368, 399, 400)
         temp = sum(self._calc_temp_ext(idx) for idx in reticle)
@@ -213,9 +175,6 @@ class CameraLoop:
             await uasyncio.sleep_ms(50)
 
     async def stream_images(self):
-        await uasyncio.sleep_ms(80 + 2 * int(self._refresh_period))
-        self.camera.setup()
-
         sp = 0
         while True:
             await self.wait_for_data()
@@ -224,12 +183,8 @@ class CameraLoop:
 
             self.state = self.camera.read_state()
             self.image = self.camera.process_image(sp, self.state)
-            
+            self.image.interpolate_bad_pixels(self.bad_pix)
             sp = int(not sp)
-            
-            for idx in range(NUM_ROWS*NUM_COLS):
-                self.image_buf[idx] = self.image.v_ir[idx]/self.image.alpha[idx]
-            self._interpolate_bad_pixels(self.image_buf, self.bad_pix)
 
             self.update_event.set()
 

@@ -9,7 +9,7 @@ from utils import (
 )
 
 from mlx90640.regmap import REG_SIZE
-from mlx90640.calibration import NUM_ROWS, NUM_COLS, TEMP_K
+from mlx90640.calibration import NUM_COLS, IMAGE_SIZE, TEMP_K
 
 PIX_STRUCT_FMT = const('>h')
 PIX_DATA_ADDRESS = const(0x0400)
@@ -25,7 +25,7 @@ class _BasePattern:
     @classmethod
     def iter_sp(cls):
         return (
-            cls.get_sp(idx) for idx in range(NUM_ROWS * NUM_COLS)
+            cls.get_sp(idx) for idx in range(IMAGE_SIZE)
         )
 
 class ChessPattern(_BasePattern):
@@ -63,24 +63,35 @@ class Subpage:
 
 class RawImage:
     def __init__(self):
-        self.pix = array_filled('h', NUM_ROWS*NUM_COLS)
+        self.pix = array_filled('h', IMAGE_SIZE)
 
     def __getitem__(self, idx):
         return self.pix[idx]
 
     def read(self, iface, update_idx = None):
         buf = bytearray(REG_SIZE)
-        update_idx = update_idx or range(NUM_ROWS * NUM_COLS)
+        update_idx = update_idx or range(IMAGE_SIZE)
         for offset in update_idx:
             iface.read_into(PIX_DATA_ADDRESS + offset, buf)
             self.pix[offset] = struct.unpack(PIX_STRUCT_FMT, buf)[0]
+
+
+ImageLimits = namedtuple('ScaleLimits', ('min_h', 'max_h', 'min_idx', 'max_idx'))
+
+_INTERP_NEIGHBOURS = tuple(
+    row * NUM_COLS + col
+    for row in (-1, 0, 1)
+    for col in (-1, 0, 1)
+    if row != 0 or col != 0
+)
 
 class ProcessedImage:
     def __init__(self, calib):
         # pix_data should be a sequence of ints
         self.calib = calib
-        self.v_ir = array_filled('f', NUM_ROWS*NUM_COLS, 0.0)
-        self.alpha = array_filled('f', NUM_ROWS*NUM_COLS, 1.0)
+        self.v_ir = array_filled('f', IMAGE_SIZE, 0.0)
+        self.alpha = array_filled('f', IMAGE_SIZE, 1.0)
+        self.buf = array_filled('f', IMAGE_SIZE, 1.0)
 
     def update(self, pix_data, subpage, state):
         if self.calib.use_tgc:
@@ -105,14 +116,17 @@ class ProcessedImage:
             ## IR data gradient compensation
             if self.calib.use_tgc:
                 v_ir -= self.calib.tgc*pix_os_cp
-            self.v_ir[idx] = v_ir
 
             ## sensitivity normalization
             alpha = self.calib.pix_alpha[idx]
             if self.calib.use_tgc:
                 alpha -= self.calib.tgc*pix_alpha_cp
             alpha *= (1 + self.calib.ksta*state.ta)
+
+            # preserve v_ir and alpha for temperature calculations
+            self.v_ir[idx] = v_ir
             self.alpha[idx] = alpha
+            self.buf[idx] = v_ir/alpha
 
     def _calc_os_cp(self, subpage, state):
         pix_os_cp = self.calib.pix_os_cp[subpage.id]
@@ -148,6 +162,9 @@ class ProcessedImage:
         alpha = self.alpha[idx]
 
         band = self._get_range_band(to)
+        if band < 0:
+            return self.calib.ct[0]
+
         alpha_ext = self.calib.alpha_ext[band]
         ksto_ext = self.calib.ksto[band]
         ct = self.calib.ct[band]
@@ -158,4 +175,27 @@ class ProcessedImage:
     def _get_range_band(self, t):
         return sum(1 for ct in self.calib.ct if t >= ct) - 1
 
-class TemperatureOutOfRangeError(Exception): pass
+    def calc_limits(self, *, exclude_idx=()):
+        # find min/max in place to keep mem usage down
+        min_h, min_idx = None, None
+        max_h, max_idx = None, None
+        for idx, h in enumerate(self.buf):
+            if idx in exclude_idx:
+                continue
+            if min_h is None or h < min_h:
+                min_h, min_idx = h, idx
+            if max_h is None or h > max_h:
+                max_h, max_idx = h, idx
+        return ImageLimits(min_h, max_h, min_idx, max_idx)
+
+    def interpolate_bad_pixels(self, bad_pixels):
+        for bad_idx in bad_pixels:
+            count = 0
+            total = 0
+            for offset in _INTERP_NEIGHBOURS:
+                idx = bad_idx + offset
+                if idx in range(IMAGE_SIZE) and idx not in bad_pixels:
+                    count += 1
+                    total += self.buf[idx]
+            if count > 0:
+                self.buf[bad_idx] = total/count

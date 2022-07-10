@@ -8,6 +8,7 @@ from mlx90640.regmap import REG_SIZE
 
 NUM_ROWS = const(24)
 NUM_COLS = const(32)
+IMAGE_SIZE = const(24*32)
 
 OCC_ROWS_ADDRESS = const(0x2412)
 OCC_COLS_ADDRESS = const(0x2418)

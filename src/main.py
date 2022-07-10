@@ -1,3 +1,4 @@
+import uasyncio
 from camera import CameraLoop
 main = CameraLoop()
-main.run()
+uasyncio.run(main.run())
