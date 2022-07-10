@@ -1,8 +1,9 @@
 import math
 import uasyncio
 import micropython
-from uasyncio import Event
 from array import array
+from uasyncio import Event
+from ucollections import namedtuple
 
 from utils import array_filled
 from pinmap import I2C_CAMERA
@@ -20,6 +21,15 @@ from display.palette import (
     COLOR_RETICLE,
 )
 
+ScaleLimits = namedtuple('ScaleLimits', ('min_h', 'max_h', 'min_idx', 'max_idx'))
+
+_IDX_NEIGHBOURS = tuple(
+    row * NUM_COLS + col
+    for row in (-1, 0, 1)
+    for col in (-1, 0, 1)
+    if row != 0 or col != 0
+)
+
 class CameraLoop:
     def __init__(self):
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
@@ -35,6 +45,8 @@ class CameraLoop:
 
         self.state = None
         self.image = None
+
+        # dynamic scale config
         self.min_range = 8
 
     def set_refresh_rate(self, value):
@@ -77,12 +89,12 @@ class CameraLoop:
         )
         text_min_scale.draw(DISPLAY)
 
-        rect_max_temp = Rect(45, y, 45, ui_height)
+        # rect_max_temp = Rect(45, y, 45, ui_height)
         text_max_temp = TextBox(
             Rect(45, y + 5, 45, ui_height - 15),
             "-00",
             scale = 2,
-            bg = COLOR_UI_BG,
+            # bg = COLOR_UI_BG,
         )
         text_max_temp.draw(DISPLAY)
 
@@ -97,83 +109,50 @@ class CameraLoop:
 
         buf_size = NUM_ROWS*NUM_COLS
 
-        #HACK
-        neighbours = tuple(
-            row * NUM_COLS + col
-            for row in (-1, 0, 1)
-            for col in (-1, 0, 1)
-            if row != 0 or col != 0
-        )
-
         while True:
             await self.update_event.wait()
             self.update_event.clear()
 
             # update max/min
-            min_h, min_idx = None, None
-            max_h, max_idx = None, None
-            for idx, h in enumerate(self.image_buf):
-                if idx in self.bad_pix:
-                    continue
-                if min_h is None or h < min_h:
-                    min_h, min_idx = h, idx
-                if max_h is None or h > max_h:
-                    max_h, max_idx = h, idx
+            limits = self._calc_limits(self.image_buf, exclude_idx=self.bad_pix)
 
             # update temp scale min/max
-            min_temp = self._calc_temp(min_idx)
-            max_temp = self._calc_temp(max_idx)
+            min_temp = self._calc_temp(limits.min_idx)
+            max_temp = self._calc_temp(limits.max_idx)
             # print(min_temp, max_temp)
 
             # dynamic scaling
             boost = 1
-            scale_h = max_h
+            scale_h = limits.max_h
             scale_temp = max_temp
             if scale_temp - min_temp < self.min_range:
                 scale_temp = min_temp + self.min_range
                 boost = ((scale_temp + TEMP_K)/(max_temp + TEMP_K))**4
                 scale_h *= boost
 
-            for bad_idx in self.bad_pix:
-                count = 0
-                interp = 0
-                for offset in neighbours:
-                    idx = bad_idx + offset
-                    if idx in range(buf_size):
-                        count += 1
-                        interp += self.image_buf[idx]
-                if count > 0:
-                    self.image_buf[bad_idx] = interp/count
-
-            self.gradient.h_scale = (min_h, scale_h)
+            # draw thermal image
+            self.gradient.h_scale = (limits.min_h, scale_h)
             pixmap.draw_map(DISPLAY, self.gradient)
             pixmap.draw_reticle(DISPLAY, fg=COLOR_RETICLE)
-
-            # paint over outliers
-            # DISPLAY.set_pen(COLOR_UI_BG)
-            # for idx in self.bad_pix:
-            #     DISPLAY.rectangle(*pixmap.get_elem_idx(idx))
 
             # update reticle
             reticle_temp = self.calc_reticle_temperature()
             text_reticle.text = f"{reticle_temp: 2.1f} °C"
             text_reticle.draw(DISPLAY)
 
+            # update scale text
             text_min_scale.text = f"{min_temp: 2.0f}"
             text_min_scale.draw(DISPLAY)
 
             if boost == 1:
                 text_max_scale.text = f"{max_temp: 2.0f}"
                 DISPLAY.set_pen(COLOR_DEFAULT_BG)
-                DISPLAY.rectangle(*rect_max_temp)
+                DISPLAY.rectangle(*text_max_temp.rect)
             else:
-                text_max_temp.text = f"{max_temp: 2.0f}"
                 text_max_scale.text = f"{scale_temp: 2.0f}*"
-                DISPLAY.set_pen(self.gradient.get_color(max_h))
-                DISPLAY.rectangle(*rect_max_temp)
+                text_max_temp.text = f"{max_temp: 2.0f}"
                 text_max_temp.draw(DISPLAY)
 
-            # text_max_scale.text = f"{max_temp: 2.0f}"
             text_max_scale.draw(DISPLAY)
 
             DISPLAY.update()
@@ -184,6 +163,34 @@ class CameraLoop:
     def _calc_temp_ext(self, idx):
         to = self.image.calc_temperature(idx, self.state)
         return self.image.calc_temperature_ext(idx, self.state, to)
+
+    @staticmethod
+    def _calc_limits(image_buf, *, exclude_idx=()):
+        # find min/max in place to keep mem usage down
+        min_h, min_idx = None, None
+        max_h, max_idx = None, None
+        for idx, h in enumerate(image_buf):
+            if idx in exclude_idx:
+                continue
+            if min_h is None or h < min_h:
+                min_h, min_idx = h, idx
+            if max_h is None or h > max_h:
+                max_h, max_idx = h, idx
+        return ScaleLimits(min_h, max_h, min_idx, max_idx)
+
+    @staticmethod
+    def _interpolate_bad_pixels(image_buf, bad_pix):
+        buf_size = len(image_buf)
+        for bad_idx in bad_pix:
+            count = 0
+            total = 0
+            for offset in _IDX_NEIGHBOURS:
+                idx = bad_idx + offset
+                if idx in range(buf_size) and idx not in bad_pix:
+                    count += 1
+                    total += image_buf[idx]
+            if count > 0:
+                image_buf[bad_idx] = total/count
 
     def calc_reticle_temperature(self):
         reticle = (367, 368, 399, 400)
@@ -214,6 +221,8 @@ class CameraLoop:
             
             for idx in range(NUM_ROWS*NUM_COLS):
                 self.image_buf[idx] = self.image.v_ir[idx]/self.image.alpha[idx]
+            self._interpolate_bad_pixels(self.image_buf, self.bad_pix)
+
             self.update_event.set()
 
             await uasyncio.sleep_ms(int(self._refresh_period * 0.8))
