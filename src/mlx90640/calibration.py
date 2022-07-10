@@ -65,6 +65,8 @@ class PixelCalibrationData:
         offset = idx * REG_SIZE
         return Struct(self._data[offset:offset+REG_SIZE], PIX_CALIB_PROTO)
 
+TEMP_K = const(273.15)
+
 class CameraCalibration:
     def __init__(self, iface, eeprom, *, emissivity=1, use_tgc=False):
         self.emissivity = emissivity
@@ -134,13 +136,27 @@ class CameraCalibration:
         self.il_offset = array('f', self._calc_il_offset())
 
         # temperature calculation
+        self.drift = 0  # temperature drift correction
+
         self.ksto_scale = 1 << (eeprom['ksto_scale'] + 8)
-        self.ksto1 = eeprom['ksto_1'] / self.ksto_scale
-        self.ksto2 = eeprom['ksto_2'] / self.ksto_scale
+        ksto1 = eeprom['ksto_1'] / self.ksto_scale
+        ksto2 = eeprom['ksto_2'] / self.ksto_scale
+        ksto3 = eeprom['ksto_3'] / self.ksto_scale
+        ksto4 = eeprom['ksto_4'] / self.ksto_scale
+        self.ksto = (ksto1, ksto2, ksto3, ksto4)
 
         step = eeprom['step'] * 10
-        self.ct3 = eeprom['ct3'] * step
-        self.ct4 = eeprom['ct4'] * step + self.ct3
+        ct1 = const(-40)
+        ct2 = const(0)
+        ct3 = eeprom['ct3'] * step
+        ct4 = eeprom['ct4'] * step + ct3
+        self.ct = (ct1, ct2, ct3, ct4)
+
+        alpha_1 = 1.0/(1.0 + ksto1*(ct2 - ct1))
+        alpha_2 = const(1.0)
+        alpha_3 = (1.0 + ksto2*(ct3 - ct2))
+        alpha_4 = alpha_3*(1.0 + ksto3*(ct4 - ct3))
+        self.alpha_ext = (alpha_1, alpha_2, alpha_3, alpha_4)
 
     def _calc_pix_os_ref(self, iface, eeprom):
         offset_avg = eeprom['pix_os_average']

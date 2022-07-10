@@ -25,7 +25,7 @@ class CameraLoop:
         self.camera = mlx90640.detect_camera(I2C_CAMERA)
         self.camera.set_pattern(ChessPattern)
         # self.camera.set_pattern(InterleavedPattern)
-        self.set_refresh_rate(8)
+        self.set_refresh_rate(4)
 
         self.update_event = Event()
         self.image_buf = array('f', (0 for i in range(NUM_ROWS*NUM_COLS)))
@@ -55,8 +55,8 @@ class CameraLoop:
 
         ui_height = int(round(pixmap.draw_rect.y))
         text_temp_ret = TextBox(
-            Rect(0, 5, 60, ui_height - 10),
-            "---°C",
+            Rect(0, 5, 80, ui_height - 10),
+            " ---- °C",
             bg = COLOR_UI_BG, 
             scale = 2,
         )
@@ -66,31 +66,33 @@ class CameraLoop:
         ui_height = display_size[1] - y
         text_temp_min = TextBox(
             Rect(0, y + 5, 60, ui_height - 10),
-            "---°C",
+            " ----",
             scale = 2,
         )
         text_temp_min.draw(DISPLAY)
 
         text_temp_max = TextBox(
             Rect(80, y + 5, 60, ui_height - 10),
-            "---°C",
+            " ----",
             scale = 2,
         )
         text_temp_max.draw(DISPLAY)
 
         DISPLAY.update()
 
+        buf_size = NUM_ROWS*NUM_COLS
+        threshold = 0
+
         # use 5/95th percentile to filter outliers
-        threshold = 0.05
-        p_low  = int(threshold*NUM_ROWS*NUM_COLS)
-        p_high = int((1-threshold)*NUM_ROWS*NUM_COLS)
+        p_low  = int(threshold*(buf_size - 1))
+        p_high = int((1-threshold)*(buf_size - 1))
 
         while True:
             await self.update_event.wait()
             self.update_event.clear()
 
             # update max/min
-            sorted_temp = sorted(zip(self.image_buf, range(NUM_ROWS*NUM_COLS)))
+            sorted_temp = sorted(zip(self.image_buf, range(buf_size)))
             min_h, min_idx = sorted_temp[p_low]
             max_h, max_idx = sorted_temp[p_high]
 
@@ -100,26 +102,28 @@ class CameraLoop:
 
             # update reticle
             reticle_temp = self.calc_reticle_temperature()
-            text_temp_ret.text = f"{reticle_temp: 2.0f}°C"
+            text_temp_ret.text = f"{reticle_temp: 2.1f} °C"
             text_temp_ret.draw(DISPLAY)
             
             # update temp scale min/max
-            temp_min = self.image.calc_temperature(min_idx, self.state)
-            text_temp_min.text = f"{temp_min: 2.0f}°C"
+            min_temp = self._calc_temp_ext(min_idx)
+            max_temp = self._calc_temp_ext(max_idx)
+
+            text_temp_min.text = f"{min_temp: 2.1f}"
             text_temp_min.draw(DISPLAY)
 
-            temp_max = self.image.calc_temperature(max_idx, self.state)
-            text_temp_max.text = f"{temp_max: 2.0f}°C"
+            text_temp_max.text = f"{max_temp: 2.1f}"
             text_temp_max.draw(DISPLAY)
 
             DISPLAY.update()
 
+    def _calc_temp_ext(self, idx):
+        to = self.image.calc_temperature(idx, self.state)
+        return self.image.calc_temperature_ext(idx, self.state, to)
+
     def calc_reticle_temperature(self):
         reticle = (367, 368, 399, 400)
-        temp = sum(
-            self.image.calc_temperature(idx, self.state)
-            for idx in reticle
-        )
+        temp = sum(self._calc_temp_ext(idx) for idx in reticle)
         return temp/4
 
     async def wait_for_data(self):
@@ -136,9 +140,12 @@ class CameraLoop:
         sp = 0
         while True:
             await self.wait_for_data()
+            
             self.camera.read_image(sp)
+
             self.state = self.camera.read_state()
             self.image = self.camera.process_image(sp, self.state)
+            
             sp = int(not sp)
             
             for idx in range(NUM_ROWS*NUM_COLS):

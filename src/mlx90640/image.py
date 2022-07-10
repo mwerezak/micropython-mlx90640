@@ -9,7 +9,7 @@ from utils import (
 )
 
 from mlx90640.regmap import REG_SIZE
-from mlx90640.calibration import NUM_ROWS, NUM_COLS
+from mlx90640.calibration import NUM_ROWS, NUM_COLS, TEMP_K
 
 PIX_STRUCT_FMT = const('>h')
 PIX_DATA_ADDRESS = const(0x0400)
@@ -75,8 +75,6 @@ class RawImage:
             iface.read_into(PIX_DATA_ADDRESS + offset, buf)
             self.pix[offset] = struct.unpack(PIX_STRUCT_FMT, buf)[0]
 
-_K = const(273.15)
-
 class ProcessedImage:
     def __init__(self, calib):
         # pix_data should be a sequence of ints
@@ -134,23 +132,30 @@ class ProcessedImage:
             for pix_os_cp_sp, gain_cp_sp in zip(pix_os_cp, state.gain_cp)
         ]
 
-    # tr - temperature of reflected environment
-    def calc_temperature(self, idx, state, *, tr = None):
+    def calc_temperature(self, idx, state):
         v_ir = self.v_ir[idx]
         alpha = self.alpha[idx]
 
-        ta = state.ta + 25
-        if self.calib.emissivity == 1:
-            t_ar = (ta + _K)**4
-        else:
-            tr = tr if tr is not None else ta - 8
-            t_ak4 = (ta + _K)**4
-            t_rk4 = (tr + _K)**4
-            t_ar = t_rk4 - (t_rk4 - t_ak4)/self.calib.emissivity
+        s_x = v_ir*(alpha**3) + state.ta_r*(alpha**4)
+        s_x = (s_x**0.25)*self.calib.ksto[1]
 
-        s_x = v_ir*(alpha**3) + t_ar*(alpha**4)
-        s_x = (s_x**0.25)*self.calib.ksto2
+        to = v_ir/(alpha*(1 - TEMP_K*self.calib.ksto[1]) + s_x) + state.ta_r
+        to = (to**0.25) - TEMP_K
+        return to + self.calib.drift
 
-        to = v_ir/(alpha*(1 - _K*self.calib.ksto2) + s_x) + t_ar
-        to = (to**0.25) - _K
-        return to
+    def calc_temperature_ext(self, idx, state, to):
+        v_ir = self.v_ir[idx]
+        alpha = self.alpha[idx]
+
+        band = self._get_range_band(to)
+        alpha_ext = self.calib.alpha_ext[band]
+        ksto_ext = self.calib.ksto[band]
+        ct = self.calib.ct[band]
+        to_ext = v_ir/(alpha*alpha_ext*(1 + ksto_ext*(to - ct))) + state.ta_r
+        to_ext = (to_ext**0.25) - TEMP_K
+        return to_ext  + self.calib.drift
+
+    def _get_range_band(self, t):
+        return sum(1 for ct in self.calib.ct if t >= ct) - 1
+
+class TemperatureOutOfRangeError(Exception): pass

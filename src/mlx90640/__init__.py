@@ -5,7 +5,7 @@ from mlx90640.regmap import (
     RegisterMap,
     CameraInterface,
 )
-from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS
+from mlx90640.calibration import CameraCalibration, NUM_ROWS, NUM_COLS, TEMP_K
 from mlx90640.image import RawImage, ProcessedImage, Subpage, get_pattern_by_id
 
 class CameraDetectError(Exception): pass
@@ -37,7 +37,7 @@ class RefreshRate:
         return value
 
 # container for momentary state needed for image compensation
-CameraState = namedtuple('CameraState', ('vdd', 'ta', 'gain', 'gain_cp'))
+CameraState = namedtuple('CameraState', ('vdd', 'ta', 'ta_r', 'gain', 'gain_cp'))
 
 class DataNotAvailableError(Exception): pass
 
@@ -102,13 +102,27 @@ class MLX90640:
         # type: (self) -> float
         return self.calib.gain / self.registers['gain']
 
-    def read_state(self):
+    # tr - temperature of reflected environment
+    def read_state(self, *, tr=None):
         gain = self.read_gain()
         cp_sp_0 = gain * self.registers['cp_sp_0']
         cp_sp_1 = gain * self.registers['cp_sp_1']
+
+        ta = self.read_ta()
+
+        ta_abs = ta + 25
+        if self.calib.emissivity == 1:
+            ta_r = (ta_abs + TEMP_K)**4
+        else:
+            tr = tr if tr is not None else ta_abs - 8
+            ta_k4 = (ta_abs + TEMP_K)**4
+            tr_k4 = (tr + TEMP_K)**4
+            ta_r = tr_k4 - (tr_k4 - ta_k4)/self.calib.emissivity
+
         return CameraState(
             vdd = self.read_vdd(),
-            ta = self.read_ta(),
+            ta = ta,
+            ta_r = ta_r,
             gain = gain,
             gain_cp = (cp_sp_0, cp_sp_1),
         )
