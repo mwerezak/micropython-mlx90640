@@ -4,6 +4,9 @@ from mlx90640.regmap import (
     EEPROM_MAP,
     RegisterMap,
     CameraInterface,
+    REG_SIZE,
+    EEPROM_ADDRESS,
+    EEPROM_SIZE,
 )
 from mlx90640.calibration import CameraCalibration, TEMP_K
 from mlx90640.image import RawImage, ProcessedImage, Subpage, get_pattern_by_id
@@ -161,3 +164,13 @@ class MLX90640:
         raw_data = ((idx, self.raw[idx]) for idx in subpage.sp_range())
         self.image.update(raw_data, subpage, state)
         return self.image
+
+    # def dump_eeprom(self):
+    #     buf = bytearray(REG_SIZE)
+    #     for addr in eeprom_range:
+    #         offset = addr*REG_SIZE
+    #         self.iface.read_into(addr, buf)
+    #         print(buf)
+    #         eeprom[offset:offset+REG_SIZE] = buf
+    #     return bytes(eeprom)
+

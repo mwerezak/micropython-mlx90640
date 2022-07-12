@@ -50,6 +50,8 @@ REGISTER_MAP = {
 }
 
 # Calibration Data
+EEPROM_ADDRESS = const(0x2400)
+EEPROM_SIZE    = const(0x340)
 
 # From table on page 21
 EEPROM_MAP = {
@@ -134,6 +136,7 @@ EEPROM_MAP = {
     ),
 }
 
+import time
 class CameraInterface:
     def __init__(self, i2c, addr):
         self.i2c = i2c   # HW interface
@@ -156,7 +159,7 @@ class RegisterMap:
         # register_map should be a dict of { I2C address : FieldDesc(s) }
         self.iface = iface
         self.readonly = readonly
-        self._name_lookup = self._build_lookup(register_map)
+        self._fields = self._build_lookup(register_map)
 
     @staticmethod
     def _build_lookup(register_map):
@@ -173,28 +176,25 @@ class RegisterMap:
 
         return lookup
 
-    def keys(self):
-        return self._name_lookup.keys()
-
     def __iter__(self):
         return iter(self.keys())
     def __len__(self):
-        return len(self._name_lookup)
+        return len(self._fields)
     def __contains__(self, name):
-        return name in self._name_lookup
+        return name in self._fields
 
     def __getitem__(self, name):
-        address, proto = self._name_lookup[name]
+        address, proto = self._fields[name]
 
         buf = self.iface.read(address)
         struct = Struct(buf, proto)
         return struct[name]
 
     def __setitem__(self, name, value):
-        address, proto = self._name_lookup[name]
-
         if self.readonly:
             raise ReadOnlyError(f"can't write to '{name}': not permitted")
+
+        address, proto = self._fields[name]
 
         buf = bytearray(REG_SIZE)
         self.iface.read_into(address, buf)

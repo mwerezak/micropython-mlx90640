@@ -15,11 +15,7 @@ from mlx90640.image import ChessPattern, InterleavedPattern
 from config import Config
 from display import DISPLAY, Rect, PixMap, TextBox
 from display.gradient import WhiteHot
-from display.palette import (
-    COLOR_DEFAULT_BG,
-    COLOR_UI_BG,
-    COLOR_RETICLE,
-)
+from display.palette import *
 
 class CameraLoop:
     def __init__(self):
@@ -35,6 +31,7 @@ class CameraLoop:
             config = Config()
             config.load('config.json')
             self.reload_config(config)
+            print("config loaded.")
         except Exception as err:
             print(f"failed to load config: {err}")
             self.reload_config(self.default)
@@ -52,6 +49,7 @@ class CameraLoop:
 
     async def run(self):
         await uasyncio.sleep_ms(80 + 2 * int(self._refresh_period))
+        print("setup camera...")
         self.camera.setup()
         self.image = self.camera.image
 
@@ -66,13 +64,14 @@ class CameraLoop:
     async def display_images(self):
         display_size = DISPLAY.get_bounds()
 
+        print("initialize display...")
         pixmap = PixMap(NUM_ROWS, NUM_COLS, self.image.buf)
         pixmap.update_rect(Rect(0, 0, *display_size))
         pixmap.draw_dummy(DISPLAY)
 
         for idx in self.bad_pix:
             row, col = divmod(idx, NUM_COLS)
-            DISPLAY.set_pen(COLOR_RETICLE)
+            DISPLAY.set_pen(COLOR_BADPIX)
             DISPLAY.rectangle(*pixmap.get_elem_rect(row, col))
 
         ui_height = int(round(pixmap.draw_rect.y))
@@ -178,6 +177,7 @@ class CameraLoop:
             await uasyncio.sleep_ms(50)
 
     async def stream_images(self):
+        print("start image read loop...")
         sp = 0
         while True:
             await self.wait_for_data()
