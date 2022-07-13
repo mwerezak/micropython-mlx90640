@@ -1,3 +1,4 @@
+import math
 import struct
 from array import array
 from ucollections import namedtuple
@@ -152,10 +153,10 @@ class ProcessedImage:
         v_ir = self.v_ir[idx]
 
         s_x = v_ir*(alpha**3) + ta_r*(alpha**4)
-        s_x = (s_x**0.25)*self.calib.ksto[1]
+        s_x = math.sqrt(math.sqrt(s_x))*self.calib.ksto[1]
 
         to = v_ir/(alpha*(1 - TEMP_K*self.calib.ksto[1]) + s_x) + ta_r
-        to = (to**0.25) - TEMP_K
+        to = math.sqrt(math.sqrt(to)) - TEMP_K
         return to + self.calib.drift
 
     def calc_temperature(self, idx, state):
@@ -175,7 +176,7 @@ class ProcessedImage:
         ksto_ext = self.calib.ksto[band]
         ct = self.calib.ct[band]
         to_ext = v_ir/(alpha*alpha_ext*(1 + ksto_ext*(to - ct))) + state.ta_r
-        to_ext = (to_ext**0.25) - TEMP_K
+        to_ext = math.sqrt(math.sqrt(to_ext)) - TEMP_K
         return to_ext  + self.calib.drift
 
     def _get_range_band(self, t):

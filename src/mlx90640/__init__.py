@@ -80,7 +80,7 @@ class MLX90640:
     def _adc_res_corr(self):
         # type: (self) -> float
         res_exp = self.calib.res_ee - self.registers['adc_resolution']
-        return 2**res_exp
+        return 1 << res_exp
 
     def read_ta(self):
         # ambient temperature calculation (delta Ta in degC)
